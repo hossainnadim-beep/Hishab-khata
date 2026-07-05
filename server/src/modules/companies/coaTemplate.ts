@@ -27,6 +27,7 @@ export const BD_SME_TEMPLATE: TemplateAccount[] = [
   { code: '2110', name: 'VAT Withheld at Source (VDS) Payable', type: 'liability', subtype: 'current_liability', purpose: 'vds_payable', isSystem: true },
   { code: '2120', name: 'AIT Withheld Payable', type: 'liability', subtype: 'current_liability', purpose: 'ait_payable', isSystem: true },
   { code: '2200', name: 'Accrued Liabilities', type: 'liability', subtype: 'current_liability' },
+  { code: '2210', name: 'Employee Reimbursements Payable', type: 'liability', subtype: 'current_liability', purpose: 'employee_reimb', isSystem: true },
   { code: '2300', name: 'Loans Payable', type: 'liability', subtype: 'long_term_liability' },
   { code: '3000', name: "Owner's Capital", type: 'equity', subtype: 'equity' },
   { code: '3100', name: 'Retained Earnings', type: 'equity', subtype: 'retained_earnings', purpose: 'retained_earnings', isSystem: true },

@@ -7,6 +7,14 @@ export interface PostLine {
   accountId: string;
   debit?: string | number;
   credit?: string | number;
+  /**
+   * Optional base-currency overrides. Used when a line must convert at a rate
+   * other than the entry's (e.g. relieving AR at the invoice-date rate during
+   * payment, with the difference going to FX gain/loss). A line may be
+   * base-only (zero txn amounts with a base override) — FX gain/loss lines.
+   */
+  baseDebit?: string | number;
+  baseCredit?: string | number;
   description?: string | null;
   contactId?: string | null;
   taxCodeId?: string | null;
@@ -56,9 +64,14 @@ export async function postEntry(trx: Knex, input: PostEntryInput): Promise<Poste
   for (const line of input.lines) {
     const dr = d(line.debit ?? 0);
     const cr = d(line.credit ?? 0);
+    const hasBaseOverride =
+      (line.baseDebit !== undefined && !d(line.baseDebit).isZero()) ||
+      (line.baseCredit !== undefined && !d(line.baseCredit).isZero());
     if (dr.lt(0) || cr.lt(0)) throw badRequest('Line amounts must be non-negative');
     if (dr.gt(0) && cr.gt(0)) throw badRequest('A line cannot have both debit and credit');
-    if (dr.isZero() && cr.isZero()) throw badRequest('A line must have a debit or credit amount');
+    if (dr.isZero() && cr.isZero() && !hasBaseOverride) {
+      throw badRequest('A line must have a debit or credit amount');
+    }
     totalDebit = totalDebit.plus(money(dr));
     totalCredit = totalCredit.plus(money(cr));
   }
@@ -80,8 +93,8 @@ export async function postEntry(trx: Knex, input: PostEntryInput): Promise<Poste
       description: line.description ?? null,
       debit: money(dr),
       credit: money(cr),
-      base_debit: money(dr.times(rate)),
-      base_credit: money(cr.times(rate)),
+      base_debit: line.baseDebit !== undefined ? money(line.baseDebit) : money(dr.times(rate)),
+      base_credit: line.baseCredit !== undefined ? money(line.baseCredit) : money(cr.times(rate)),
       contact_id: line.contactId ?? null,
       tax_code_id: line.taxCodeId ?? null,
     };

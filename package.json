@@ -1,0 +1,17 @@
+{
+  "name": "khata-books",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cloud accounting platform for SMEs (Bangladesh-first) — double-entry ledger, sales, purchases, banking, tax, inventory, reporting.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "test": "npm test -w server",
+    "migrate": "npm run migrate -w server",
+    "seed": "npm run seed -w server"
+  }
+}

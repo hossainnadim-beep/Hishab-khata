@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(psql --version)",
+      "Bash(pg_ctl --version)",
+      "Bash(docker --version)",
+      "Bash(git --version)",
+      "Bash(brew --version)",
+      "Bash(brew list *)",
+      "Bash(brew install *)",
+      "Bash(git init *)",
+      "Bash(npm install *)",
+      "Bash(brew services *)",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/createdb khata_dev)",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/createdb khata_test)",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -c \"select version\\(\\);\")",
+      "Bash(node scripts/migrate.ts)",
+      "Bash(npx vitest *)"
+    ]
+  }
+}

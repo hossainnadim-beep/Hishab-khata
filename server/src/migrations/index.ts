@@ -4,6 +4,7 @@ import * as m002 from './002_ledger.ts';
 import * as m003 from './003_tax.ts';
 import * as m004 from './004_documents.ts';
 import * as m005 from './005_banking.ts';
+import * as m006 from './006_line_company_guard.ts';
 
 export interface Migration {
   name: string;
@@ -17,6 +18,7 @@ export const migrations: Migration[] = [
   { name: '003_tax', ...m003 },
   { name: '004_documents', ...m004 },
   { name: '005_banking', ...m005 },
+  { name: '006_line_company_guard', ...m006 },
 ];
 
 /** Knex MigrationSource backed by the static list above (native TS imports). */

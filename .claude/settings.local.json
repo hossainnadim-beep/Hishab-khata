@@ -25,7 +25,9 @@
       "Bash(npm test *)",
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select sum\\(base_debit\\)-sum\\(base_credit\\) from journal_lines jl join journal_entries je on je.id=jl.entry_id where je.status='posted'; select status, balance_due from invoices where doc_no='INV-0008'\")",
       "Bash(git add *)",
-      "Bash(git commit -q -m 'API docs \\(OpenAPI 3.0\\), README with setup/deploy, engineering notes *)"
+      "Bash(git commit -q -m 'API docs \\(OpenAPI 3.0\\), README with setup/deploy, engineering notes *)",
+      "Bash(cp /private/tmp/claude-501/-Users-imteaj-Documents-Claude-QBO-Clone/2bf213d9-0e7a-463c-be1b-969e7083a9de/scratchpad/attack.ts ./_attack_tmp.ts)",
+      "Bash(node ./_attack_tmp.ts)"
     ]
   }
 }

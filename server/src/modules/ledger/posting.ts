@@ -81,6 +81,16 @@ export async function postEntry(trx: Knex, input: PostEntryInput): Promise<Poste
     );
   }
 
+  // Tenant isolation: every line account must belong to the posting company.
+  const accountIds = [...new Set(input.lines.map((l) => l.accountId))];
+  const [owned] = await trx('accounts')
+    .whereIn('id', accountIds)
+    .andWhere({ company_id: input.companyId })
+    .count('* as n');
+  if (Number(owned.n) !== accountIds.length) {
+    throw badRequest('One or more accounts do not belong to this company');
+  }
+
   await ensurePeriodsFor(trx, input.companyId, input.txnDate, company.fiscal_year_start_month);
 
   // Per-line base conversion with 2dp rounding, tracking the residual.

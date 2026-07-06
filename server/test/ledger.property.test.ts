@@ -192,6 +192,45 @@ describe('ledger invariants (property tests)', () => {
     ).rejects.toThrow(/already reversed/);
   });
 
+  it('rejects lines whose account belongs to another company (tenant isolation)', async () => {
+    const victim = await makeCompany();
+    // App-level guard in postEntry
+    await expect(
+      db.transaction((trx) =>
+        postEntry(trx, {
+          companyId: co.company.id,
+          txnDate: '2026-05-01',
+          lines: [
+            { accountId: co.byCode['1000'].id, debit: '100.00' },
+            { accountId: victim.byCode['4000'].id, credit: '100.00' },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/do not belong to this company/);
+    // DB-level trigger for direct SQL
+    const [je] = await db('journal_entries')
+      .insert({
+        company_id: co.company.id,
+        entry_no: 999999,
+        txn_date: '2026-05-01',
+        currency: 'BDT',
+        status: 'draft',
+      })
+      .returning(['id']);
+    await expect(
+      db('journal_lines').insert({
+        entry_id: je.id,
+        line_no: 1,
+        account_id: victim.byCode['4000'].id,
+        debit: '100.00',
+        base_debit: '100.00',
+      }),
+    ).rejects.toThrow(/different company/);
+    await db('journal_entries').where({ id: je.id }).delete(); // draft, deletable
+    // Victim's books untouched
+    expect(d(await trialBalanceDiff(victim.company.id)).toFixed(2)).toBe('0.00');
+  });
+
   it('posting into a closed period is rejected at the database level', async () => {
     const fresh = await makeCompany();
     // ensure periods exist for the date, then close that period

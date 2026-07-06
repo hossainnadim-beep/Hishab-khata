@@ -21,7 +21,7 @@ export const BD_SME_TEMPLATE: TemplateAccount[] = [
   { code: '1310', name: 'VAT Input (Rebatable)', type: 'asset', subtype: 'current_asset', purpose: 'vat_input', isSystem: true },
   { code: '1400', name: 'Prepaid Expenses', type: 'asset', subtype: 'current_asset' },
   { code: '1500', name: 'Equipment & Machinery', type: 'asset', subtype: 'fixed_asset' },
-  { code: '1510', name: 'Accumulated Depreciation', type: 'asset', subtype: 'fixed_asset' },
+  { code: '1510', name: 'Accumulated Depreciation', type: 'asset', subtype: 'accumulated_depreciation' },
   { code: '2000', name: 'Accounts Payable', type: 'liability', subtype: 'accounts_payable', purpose: 'ap', isSystem: true },
   { code: '2100', name: 'VAT Output Payable', type: 'liability', subtype: 'current_liability', purpose: 'vat_output', isSystem: true },
   { code: '2110', name: 'VAT Withheld at Source (VDS) Payable', type: 'liability', subtype: 'current_liability', purpose: 'vds_payable', isSystem: true },

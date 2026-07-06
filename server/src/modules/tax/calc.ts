@@ -28,8 +28,10 @@ export function calcLineTax(
   if (rate.isZero()) return { net: money(amt), tax: '0.00' };
 
   if (amountsAre === 'inclusive') {
-    const tax = amt.times(rate).div(rate.plus(100));
-    return { net: money(amt.minus(tax)), tax: money(tax) };
+    // Round the tax first, then derive net from the rounded tax so
+    // net + tax always reassembles the gross exactly.
+    const tax = money(amt.times(rate).div(rate.plus(100)));
+    return { net: money(amt.minus(tax)), tax };
   }
   return { net: money(amt), tax: money(amt.times(rate).div(100)) };
 }

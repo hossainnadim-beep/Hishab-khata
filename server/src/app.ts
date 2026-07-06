@@ -10,6 +10,7 @@ import { contactsRouter } from './modules/contacts/routes.ts';
 import { itemsRouter } from './modules/inventory/routes.ts';
 import { salesRouter } from './modules/sales/routes.ts';
 import { purchasesRouter } from './modules/purchases/routes.ts';
+import { bankingRouter } from './modules/banking/routes.ts';
 
 export function createApp() {
   const app = express();
@@ -28,6 +29,7 @@ export function createApp() {
   scoped.use('/items', itemsRouter);
   scoped.use('/sales', salesRouter);
   scoped.use('/purchases', purchasesRouter);
+  scoped.use('/banking', bankingRouter);
   app.use('/api/companies/:companyId', requireAuth, companyContext, scoped);
 
   // Error handler: ApiError → its status; Postgres RAISE/constraint → 400.

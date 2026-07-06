@@ -7,6 +7,7 @@ import { audit } from '../../lib/audit.ts';
 import { notFound } from '../../lib/errors.ts';
 import { postEntry, reverseEntry } from './posting.ts';
 import { setPeriodStatus, setFiscalYearStatus } from './periods.ts';
+import { revalueFx } from './fxRevalue.ts';
 
 export const ledgerRouter = Router({ mergeParams: true });
 
@@ -138,6 +139,39 @@ ledgerRouter.post(
     }
   },
 );
+
+// ---- Unrealized FX revaluation ----
+
+const revalueSchema = z.object({
+  asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  rates: z.record(z.string().length(3), z.union([z.string(), z.number()])),
+});
+
+ledgerRouter.post('/fx-revalue', requireRole('accountant'), async (req: AuthedRequest, res, next) => {
+  try {
+    const body = parse(revalueSchema, req.body);
+    const result = await db.transaction(async (trx) => {
+      const out = await revalueFx(trx, {
+        companyId: req.companyId!,
+        asOfDate: body.asOfDate,
+        rates: body.rates,
+        userId: req.userId,
+      });
+      await audit(trx, {
+        companyId: req.companyId!,
+        userId: req.userId,
+        action: 'fx.revalued',
+        entityType: 'journal_entry',
+        entityId: out.adjustmentEntryId,
+        details: { asOfDate: body.asOfDate, rates: body.rates, total: out.total },
+      });
+      return out;
+    });
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
 
 // ---- Fiscal years & periods ----
 

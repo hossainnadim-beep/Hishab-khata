@@ -16,7 +16,12 @@
       "Bash(/opt/homebrew/opt/postgresql@16/bin/createdb khata_test)",
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -c \"select version\\(\\);\")",
       "Bash(node scripts/migrate.ts)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(node scripts/seed.ts)",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select sum\\(base_debit\\)-sum\\(base_credit\\) from journal_lines jl join journal_entries je on je.id=jl.entry_id where je.status='posted'\")",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select count\\(*\\) from journal_entries; select count\\(*\\) from invoices; select count\\(*\\) from bills; select count\\(*\\) from bank_txns\")"
     ]
   }
 }

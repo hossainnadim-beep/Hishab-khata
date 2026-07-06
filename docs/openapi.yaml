@@ -1,0 +1,625 @@
+openapi: 3.0.3
+info:
+  title: Khata Books API
+  version: 0.1.0
+  description: |
+    Cloud accounting for SMEs (Bangladesh-first). All money amounts are decimal
+    strings with 2 dp. Dates are `YYYY-MM-DD`. Every business document posts
+    balanced, immutable journal entries; corrections are reversing entries.
+
+    **Auth**: `Authorization: Bearer <JWT>` from `/auth/login` or `/auth/register`.
+    **Tenancy**: everything else is scoped under `/companies/{companyId}` and
+    requires membership. Roles (ascending): `read_only`, `data_entry`,
+    `accountant`, `owner`. GET endpoints need `read_only`; document creation
+    and posting need `data_entry`; voiding, tax/COA/period admin need
+    `accountant`; company settings and member management need `owner`.
+servers:
+  - url: http://localhost:4000/api
+tags:
+  - { name: auth }
+  - { name: companies }
+  - { name: accounts, description: Chart of accounts }
+  - { name: ledger, description: Journal, periods, FX revaluation }
+  - { name: tax }
+  - { name: contacts }
+  - { name: items }
+  - { name: sales }
+  - { name: purchases }
+  - { name: banking }
+  - { name: reports }
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                name: { type: string }
+      responses:
+        "201": { description: "Token + user", content: { application/json: { schema: { $ref: "#/components/schemas/AuthResponse" } } } }
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: "Token + user", content: { application/json: { schema: { $ref: "#/components/schemas/AuthResponse" } } } }
+  /auth/me:
+    get:
+      tags: [auth]
+      responses:
+        "200": { description: "Current user and their companies with roles" }
+
+  /companies:
+    post:
+      tags: [companies]
+      summary: Create a company (seeds COA template, tax codes, fiscal periods)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                legalName: { type: string }
+                country: { type: string, default: BD, description: "BD seeds Mushak VAT + VDS/AIT codes; others get a generic editable set" }
+                baseCurrency: { type: string, default: BDT }
+                fiscalYearStartMonth: { type: integer, default: 7 }
+                taxRegistrationNo: { type: string, description: BIN }
+      responses:
+        "201": { description: Company }
+
+  /companies/{companyId}:
+    get: { tags: [companies], summary: Company profile + your role, responses: { "200": { description: Company } } }
+    patch: { tags: [companies], summary: Update profile / invoice branding (owner), responses: { "200": { description: Company } } }
+  /companies/{companyId}/members:
+    get: { tags: [companies], responses: { "200": { description: Members } } }
+    post:
+      tags: [companies]
+      summary: Add/replace a member by email (owner)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string }
+                role: { type: string, enum: [owner, accountant, data_entry, read_only] }
+      responses: { "201": { description: ok } }
+  /companies/{companyId}/members/{userId}:
+    delete: { tags: [companies], summary: Remove member (owner), responses: { "200": { description: ok } } }
+  /companies/{companyId}/activity:
+    get: { tags: [companies], summary: Audit/activity log (newest first), responses: { "200": { description: Entries } } }
+
+  /companies/{companyId}/accounts:
+    get: { tags: [accounts], responses: { "200": { description: Chart of accounts } } }
+    post:
+      tags: [accounts]
+      summary: Create account (accountant)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccountInput" }
+      responses: { "201": { description: Account } }
+  /companies/{companyId}/accounts/{id}:
+    patch: { tags: [accounts], summary: Update (type locked once used), responses: { "200": { description: Account } } }
+    delete: { tags: [accounts], summary: Archive (system accounts protected), responses: { "200": { description: ok } } }
+
+  /companies/{companyId}/ledger/journal:
+    get:
+      tags: [ledger]
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: account_id, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses: { "200": { description: Posted entries } }
+    post:
+      tags: [ledger]
+      summary: Post a manual journal (balanced, ≥2 lines)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualJournalInput" }
+      responses:
+        "201": { description: "{id, entryNo}" }
+        "400": { description: Unbalanced, closed period, or validation error }
+  /companies/{companyId}/ledger/journal/{id}:
+    get: { tags: [ledger], summary: Entry with lines and reversal link, responses: { "200": { description: Entry } } }
+  /companies/{companyId}/ledger/journal/{id}/reverse:
+    post:
+      tags: [ledger]
+      summary: Post the mirror-image reversing entry (accountant). The only legal correction.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [txnDate]
+              properties: { txnDate: { type: string }, memo: { type: string } }
+      responses:
+        "201": { description: Reversal entry }
+        "400": { description: Already reversed / not posted }
+  /companies/{companyId}/ledger/periods:
+    get: { tags: [ledger], summary: Fiscal years with monthly periods, responses: { "200": { description: Years } } }
+  /companies/{companyId}/ledger/periods/{id}/status:
+    post:
+      tags: [ledger]
+      summary: Close/reopen a period (accountant). Posting into a closed period is rejected by a DB trigger.
+      requestBody: { content: { application/json: { schema: { type: object, properties: { status: { type: string, enum: [open, closed] } } } } } }
+      responses: { "200": { description: ok } }
+  /companies/{companyId}/ledger/fiscal-years/{id}/status:
+    post: { tags: [ledger], summary: Close/reopen a fiscal year (closes all its periods), responses: { "200": { description: ok } } }
+  /companies/{companyId}/ledger/fx-revalue:
+    post:
+      tags: [ledger]
+      summary: Unrealized FX revaluation (accountant)
+      description: Revalues open foreign-currency AR/AP and FC bank accounts at the given closing rates; posts a base-currency adjustment and an automatic next-day reversal.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asOfDate, rates]
+              properties:
+                asOfDate: { type: string }
+                rates: { type: object, additionalProperties: { type: number }, example: { USD: 122.5 } }
+      responses: { "200": { description: "{adjustmentEntryId, reversalEntryId, total}" } }
+
+  /companies/{companyId}/tax-codes:
+    get: { tags: [tax], responses: { "200": { description: Tax codes } } }
+    post:
+      tags: [tax]
+      summary: Create a tax code (accountant). New jurisdictions are configuration, not code.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaxCodeInput" }
+      responses: { "201": { description: Tax code } }
+  /companies/{companyId}/tax-codes/{id}:
+    patch: { tags: [tax], responses: { "200": { description: Tax code } } }
+    delete: { tags: [tax], summary: Archive, responses: { "200": { description: ok } } }
+
+  /companies/{companyId}/contacts:
+    get:
+      tags: [contacts]
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [customer, vendor] } }
+        - { name: search, in: query, schema: { type: string } }
+      responses: { "200": { description: Contacts } }
+    post: { tags: [contacts], requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/ContactInput" } } } }, responses: { "201": { description: Contact } } }
+  /companies/{companyId}/contacts/{id}:
+    get: { tags: [contacts], responses: { "200": { description: Contact } } }
+    patch: { tags: [contacts], responses: { "200": { description: Contact } } }
+    delete: { tags: [contacts], summary: Archive, responses: { "200": { description: ok } } }
+
+  /companies/{companyId}/items:
+    get: { tags: [items], responses: { "200": { description: Items with qty_on_hand and avg_cost } } }
+    post: { tags: [items], requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/ItemInput" } } } }, responses: { "201": { description: Item } } }
+  /companies/{companyId}/items/{id}:
+    patch: { tags: [items], responses: { "200": { description: Item } } }
+    delete: { tags: [items], summary: Archive, responses: { "200": { description: ok } } }
+  /companies/{companyId}/items/{id}/movements:
+    get: { tags: [items], summary: Stock movement history, responses: { "200": { description: Movements } } }
+  /companies/{companyId}/items/{id}/adjust:
+    post:
+      tags: [items]
+      summary: Manual stock adjustment with balancing journal entry (accountant)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, qtyDelta, adjustmentAccountId]
+              properties:
+                date: { type: string }
+                qtyDelta: { type: string, description: "+ in / − out" }
+                unitCost: { type: string, description: required for stock-in }
+                adjustmentAccountId: { type: string }
+                memo: { type: string }
+      responses: { "200": { description: Updated item } }
+
+  /companies/{companyId}/sales/quotes:
+    get: { tags: [sales], responses: { "200": { description: Quotes } } }
+    post: { tags: [sales], requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocInput" } } } }, responses: { "201": { description: Quote } } }
+  /companies/{companyId}/sales/quotes/{id}:
+    get: { tags: [sales], responses: { "200": { description: Quote with lines } } }
+  /companies/{companyId}/sales/quotes/{id}/status:
+    post: { tags: [sales], summary: "sent | accepted | declined", responses: { "200": { description: Quote } } }
+  /companies/{companyId}/sales/quotes/{id}/convert:
+    post: { tags: [sales], summary: Convert to draft invoice, responses: { "201": { description: Invoice } } }
+
+  /companies/{companyId}/sales/invoices:
+    get:
+      tags: [sales]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, open, paid, voided] } }
+        - { name: customer_id, in: query, schema: { type: string } }
+      responses: { "200": { description: Invoices } }
+    post:
+      tags: [sales]
+      summary: Create draft invoice (totals computed server-side)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocInput" } } } }
+      responses: { "201": { description: Draft invoice } }
+  /companies/{companyId}/sales/invoices/{id}:
+    get: { tags: [sales], summary: Invoice with lines, payments, credits, responses: { "200": { description: Invoice } } }
+    patch: { tags: [sales], summary: Edit draft only, responses: { "200": { description: Invoice } } }
+  /companies/{companyId}/sales/invoices/{id}/post:
+    post:
+      tags: [sales]
+      summary: Post to ledger
+      description: "Journal: DR Accounts Receivable / CR income per line / CR output VAT per code. Inventory lines additionally post DR COGS / CR Inventory at weighted-average cost (separate base-currency entry)."
+      responses: { "200": { description: "{invoice, journalEntryId, cogsJournalEntryId}" } }
+  /companies/{companyId}/sales/invoices/{id}/void:
+    post: { tags: [sales], summary: Void via reversing entries; restores stock (accountant), responses: { "200": { description: ok } } }
+
+  /companies/{companyId}/sales/payments:
+    get: { tags: [sales], summary: All payments (both directions), responses: { "200": { description: Payments } } }
+    post:
+      tags: [sales]
+      summary: Receive customer payment
+      description: "Allocates to open invoices (same currency). Withholding lines (AIT/VDS certificates from customer) post to the code's sales-side account and reduce cash. AR is relieved at each invoice's historical rate; the difference to the payment-date rate posts to Realized FX Gain/Loss."
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/ReceivePaymentInput" } } } }
+      responses: { "201": { description: Payment } }
+
+  /companies/{companyId}/sales/credit-notes:
+    get: { tags: [sales], responses: { "200": { description: Credit notes } } }
+    post: { tags: [sales], requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocInput" } } } }, responses: { "201": { description: Draft credit note } } }
+  /companies/{companyId}/sales/credit-notes/{id}:
+    get: { tags: [sales], responses: { "200": { description: Credit note with applications } } }
+  /companies/{companyId}/sales/credit-notes/{id}/post:
+    post: { tags: [sales], summary: "Post: DR income + output VAT / CR AR; restocks returned inventory", responses: { "200": { description: Credit note } } }
+  /companies/{companyId}/sales/credit-notes/{id}/apply:
+    post:
+      tags: [sales]
+      summary: Apply against an open invoice (same customer & currency)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, amount]
+              properties: { invoiceId: { type: string }, amount: { type: string } }
+      responses: { "200": { description: "{applied}" } }
+
+  /companies/{companyId}/sales/recurring-invoices:
+    get: { tags: [sales], responses: { "200": { description: Schedules } } }
+    post: { tags: [sales], summary: Create schedule (template + frequency), responses: { "201": { description: Schedule } } }
+  /companies/{companyId}/sales/recurring-invoices/{id}:
+    patch: { tags: [sales], summary: Update / pause / resume, responses: { "200": { description: Schedule } } }
+  /companies/{companyId}/sales/recurring-invoices/run:
+    post:
+      tags: [sales]
+      summary: Materialize all due schedules up to today (call from cron or UI)
+      responses: { "200": { description: "{created, invoices}" } }
+
+  /companies/{companyId}/purchases/bills:
+    get: { tags: [purchases], responses: { "200": { description: Bills } } }
+    post: { tags: [purchases], requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/BillInput" } } } }, responses: { "201": { description: Draft bill } } }
+  /companies/{companyId}/purchases/bills/{id}:
+    get: { tags: [purchases], responses: { "200": { description: Bill with lines/payments/credits } } }
+    patch: { tags: [purchases], summary: Edit draft only, responses: { "200": { description: Bill } } }
+  /companies/{companyId}/purchases/bills/{id}/post:
+    post:
+      tags: [purchases]
+      summary: Post to ledger
+      description: "Journal: DR expense/inventory per line / DR input VAT / CR Accounts Payable. Inventory lines stock in at base-currency unit cost (weighted average updates)."
+      responses: { "200": { description: Bill } }
+  /companies/{companyId}/purchases/bills/{id}/void:
+    post: { tags: [purchases], summary: Void via reversing entry; unwinds stock (accountant), responses: { "200": { description: ok } } }
+  /companies/{companyId}/purchases/payments:
+    post:
+      tags: [purchases]
+      summary: Pay bills
+      description: "Withholding lines (VDS/AIT deducted at source) credit the code's purchase-side payable accounts; the vendor receives cash net of withholding. AP relieved at bill rate; FX difference realized."
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/PayBillInput" } } } }
+      responses: { "201": { description: Payment } }
+  /companies/{companyId}/purchases/vendor-credits:
+    get: { tags: [purchases], responses: { "200": { description: Vendor credits } } }
+    post: { tags: [purchases], responses: { "201": { description: Draft vendor credit } } }
+  /companies/{companyId}/purchases/vendor-credits/{id}/post:
+    post: { tags: [purchases], summary: "Post: DR AP / CR expense-inventory + input VAT", responses: { "200": { description: Vendor credit } } }
+  /companies/{companyId}/purchases/vendor-credits/{id}/apply:
+    post: { tags: [purchases], summary: Apply against an open bill, responses: { "200": { description: "{applied}" } } }
+  /companies/{companyId}/purchases/expense-claims:
+    get: { tags: [purchases], responses: { "200": { description: Claims } } }
+    post: { tags: [purchases], summary: Create draft claim (receipt amounts are tax-inclusive), responses: { "201": { description: Claim } } }
+  /companies/{companyId}/purchases/expense-claims/{id}/approve:
+    post: { tags: [purchases], summary: "Post: DR expenses + input VAT / CR Employee Reimbursements Payable (accountant)", responses: { "200": { description: Claim } } }
+  /companies/{companyId}/purchases/expense-claims/{id}/reimburse:
+    post: { tags: [purchases], summary: "Pay the employee: DR Reimbursements Payable / CR bank (accountant)", responses: { "200": { description: Claim } } }
+
+  /companies/{companyId}/banking/accounts:
+    get: { tags: [banking], summary: Bank/cash accounts with balances and unmatched counts, responses: { "200": { description: Accounts } } }
+  /companies/{companyId}/banking/import:
+    post:
+      tags: [banking]
+      summary: Import a CSV or OFX statement (deduplicated by FITID/content hash)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId, format, content]
+              properties:
+                accountId: { type: string }
+                format: { type: string, enum: [csv, ofx] }
+                content: { type: string, description: raw file text }
+                filename: { type: string }
+      responses: { "201": { description: "{importId, imported, duplicates}" } }
+  /companies/{companyId}/banking/txns:
+    get:
+      tags: [banking]
+      parameters:
+        - { name: account_id, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [unmatched, matched, reconciled, excluded] } }
+      responses: { "200": { description: Statement lines } }
+  /companies/{companyId}/banking/txns/auto-match:
+    post:
+      tags: [banking]
+      summary: "Auto-match: exact ledger match (±5 days) first, then bank rules create entries"
+      responses: { "200": { description: "{matched, ruleCreated, unmatched}" } }
+  /companies/{companyId}/banking/txns/{id}/match:
+    post: { tags: [banking], summary: Manually match to a posted journal entry, responses: { "200": { description: Txn } } }
+  /companies/{companyId}/banking/txns/{id}/categorize:
+    post: { tags: [banking], summary: Create a spend/receive entry from the line and match it, responses: { "200": { description: Txn } } }
+  /companies/{companyId}/banking/txns/{id}/exclude:
+    post: { tags: [banking], responses: { "200": { description: Txn } } }
+  /companies/{companyId}/banking/txns/{id}/unmatch:
+    post: { tags: [banking], responses: { "200": { description: Txn } } }
+  /companies/{companyId}/banking/spend-receive:
+    post: { tags: [banking], summary: Direct money in/out entry (inclusive tax split supported), responses: { "201": { description: "{journalEntryId}" } } }
+  /companies/{companyId}/banking/rules:
+    get: { tags: [banking], responses: { "200": { description: Rules } } }
+    post: { tags: [banking], summary: "Match by description contains/regex + direction → post to account", responses: { "201": { description: Rule } } }
+  /companies/{companyId}/banking/rules/{id}:
+    delete: { tags: [banking], responses: { "200": { description: ok } } }
+  /companies/{companyId}/banking/reconciliations:
+    get: { tags: [banking], responses: { "200": { description: Reconciliations } } }
+    post: { tags: [banking], summary: Start a reconciliation (statement date + balance), responses: { "201": { description: Reconciliation } } }
+  /companies/{companyId}/banking/reconciliations/{id}:
+    get: { tags: [banking], summary: Status with ledger balance and difference, responses: { "200": { description: Reconciliation } } }
+  /companies/{companyId}/banking/reconciliations/{id}/complete:
+    post:
+      tags: [banking]
+      summary: Complete — only when ledger balance equals statement balance; locks matched txns as reconciled
+      responses:
+        "200": { description: Reconciliation }
+        "400": { description: Balances differ }
+
+  /companies/{companyId}/reports/trial-balance:
+    get:
+      tags: [reports]
+      parameters:
+        - { name: as_of, in: query, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string, enum: [json, xlsx, pdf], default: json } }
+      responses: { "200": { description: Report (all report endpoints accept format=json|xlsx|pdf) } }
+  /companies/{companyId}/reports/profit-loss:
+    get:
+      tags: [reports]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+        - { name: compare, in: query, schema: { type: string, enum: [previous_period, previous_year] } }
+        - { name: format, in: query, schema: { type: string } }
+      responses: { "200": { description: Report with optional comparative column } }
+  /companies/{companyId}/reports/balance-sheet:
+    get:
+      tags: [reports]
+      parameters:
+        - { name: as_of, in: query, schema: { type: string } }
+        - { name: compare_as_of, in: query, schema: { type: string } }
+      responses: { "200": { description: Report; equity includes Current Earnings roll-up } }
+  /companies/{companyId}/reports/cash-flow:
+    get:
+      tags: [reports]
+      summary: Indirect method; always reconciles to the cash movement
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: Report } }
+  /companies/{companyId}/reports/general-ledger:
+    get:
+      tags: [reports]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+        - { name: account_id, in: query, schema: { type: string } }
+      responses: { "200": { description: Per-account entries with running balances } }
+  /companies/{companyId}/reports/ar-aging:
+    get: { tags: [reports], summary: "Buckets: Current / 1-30 / 31-60 / 61-90 / 90+", responses: { "200": { description: Report } } }
+  /companies/{companyId}/reports/ap-aging:
+    get: { tags: [reports], responses: { "200": { description: Report } } }
+  /companies/{companyId}/reports/tax-summary:
+    get:
+      tags: [reports]
+      summary: VAT & withholding summary (output vs input VAT, net payable, VDS, AIT)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: Report } }
+  /companies/{companyId}/reports/stock-on-hand:
+    get: { tags: [reports], responses: { "200": { description: Items with qty, avg cost, value } } }
+  /companies/{companyId}/reports/customer-statement/{customerId}:
+    get:
+      tags: [reports]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: Statement with opening/closing balance } }
+  /companies/{companyId}/reports/document-pdf/{docType}/{id}:
+    get:
+      tags: [reports]
+      summary: Branded PDF (docType = invoice | quote | credit-note)
+      responses: { "200": { description: application/pdf } }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { type: object }
+    AccountInput:
+      type: object
+      required: [code, name, type]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [asset, liability, equity, income, expense] }
+        subtype: { type: string, description: "bank/cash/inventory/accounts_receivable/... drives reports" }
+        currency: { type: string, description: "set for foreign-currency bank accounts" }
+    TaxCodeInput:
+      type: object
+      required: [code, name, rate]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        rate: { type: number, description: percent }
+        appliesTo: { type: string, enum: [sales, purchases, both] }
+        isWithholding: { type: boolean, description: deducted from payments at source, not added to documents }
+        salesAccountId: { type: string, nullable: true }
+        purchaseAccountId: { type: string, nullable: true }
+        reportCategory: { type: string, description: groups on the tax summary }
+        jurisdiction: { type: string }
+    ContactInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        isCustomer: { type: boolean }
+        isVendor: { type: boolean }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        taxRegNo: { type: string, nullable: true }
+        currency: { type: string, nullable: true }
+        paymentTermsDays: { type: integer, default: 30 }
+    ItemInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        sku: { type: string, nullable: true }
+        type: { type: string, enum: [service, inventory] }
+        salePrice: { type: string }
+        purchasePrice: { type: string }
+        incomeAccountId: { type: string, nullable: true }
+        expenseAccountId: { type: string, nullable: true, description: COGS for inventory }
+        inventoryAccountId: { type: string, nullable: true }
+        taxCodeId: { type: string, nullable: true }
+    DocLine:
+      type: object
+      properties:
+        itemId: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        qty: { type: string, default: "1" }
+        unitPrice: { type: string }
+        discountPct: { type: string, description: sales documents only }
+        accountId: { type: string, nullable: true, description: defaults from item }
+        taxCodeId: { type: string, nullable: true }
+    SalesDocInput:
+      type: object
+      required: [customerId, issueDate, lines]
+      properties:
+        customerId: { type: string }
+        issueDate: { type: string }
+        dueDate: { type: string, description: defaults from contact terms }
+        currency: { type: string }
+        exchangeRate: { type: string, description: base per unit of doc currency }
+        amountsAre: { type: string, enum: [exclusive, inclusive, no_tax] }
+        memo: { type: string, nullable: true }
+        lines: { type: array, items: { $ref: "#/components/schemas/DocLine" } }
+    BillInput:
+      allOf:
+        - $ref: "#/components/schemas/SalesDocInput"
+      type: object
+      required: [vendorId, issueDate, lines]
+      properties:
+        vendorId: { type: string }
+        vendorRef: { type: string, nullable: true }
+    Withholding:
+      type: object
+      required: [taxCodeId, amount]
+      properties:
+        taxCodeId: { type: string, description: must be a withholding code }
+        baseAmount: { type: string, description: informational base }
+        amount: { type: string }
+    ReceivePaymentInput:
+      type: object
+      required: [contactId, paymentDate, depositAccountId, allocations]
+      properties:
+        contactId: { type: string }
+        paymentDate: { type: string }
+        currency: { type: string }
+        exchangeRate: { type: string }
+        depositAccountId: { type: string }
+        reference: { type: string, nullable: true }
+        memo: { type: string, nullable: true }
+        allocations:
+          type: array
+          items:
+            type: object
+            required: [invoiceId, amount]
+            properties: { invoiceId: { type: string }, amount: { type: string } }
+        withholdings: { type: array, items: { $ref: "#/components/schemas/Withholding" } }
+    PayBillInput:
+      type: object
+      required: [contactId, paymentDate, paymentAccountId, allocations]
+      properties:
+        contactId: { type: string }
+        paymentDate: { type: string }
+        currency: { type: string }
+        exchangeRate: { type: string }
+        paymentAccountId: { type: string }
+        reference: { type: string, nullable: true }
+        allocations:
+          type: array
+          items:
+            type: object
+            required: [billId, amount]
+            properties: { billId: { type: string }, amount: { type: string } }
+        withholdings: { type: array, items: { $ref: "#/components/schemas/Withholding" } }
+    ManualJournalInput:
+      type: object
+      required: [txnDate, lines]
+      properties:
+        txnDate: { type: string }
+        currency: { type: string, description: defaults to base }
+        exchangeRate: { type: string }
+        memo: { type: string }
+        lines:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [accountId]
+            properties:
+              accountId: { type: string }
+              debit: { type: string }
+              credit: { type: string }
+              description: { type: string }
+
+security:
+  - bearerAuth: []

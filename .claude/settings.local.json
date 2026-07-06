@@ -21,7 +21,11 @@
       "Bash(echo \"tsc exit: $?\")",
       "Bash(node scripts/seed.ts)",
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select sum\\(base_debit\\)-sum\\(base_credit\\) from journal_lines jl join journal_entries je on je.id=jl.entry_id where je.status='posted'\")",
-      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select count\\(*\\) from journal_entries; select count\\(*\\) from invoices; select count\\(*\\) from bills; select count\\(*\\) from bank_txns\")"
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select count\\(*\\) from journal_entries; select count\\(*\\) from invoices; select count\\(*\\) from bills; select count\\(*\\) from bank_txns\")",
+      "Bash(npm test *)",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select sum\\(base_debit\\)-sum\\(base_credit\\) from journal_lines jl join journal_entries je on je.id=jl.entry_id where je.status='posted'; select status, balance_due from invoices where doc_no='INV-0008'\")",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'API docs \\(OpenAPI 3.0\\), README with setup/deploy, engineering notes *)"
     ]
   }
 }

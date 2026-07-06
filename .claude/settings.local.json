@@ -27,7 +27,12 @@
       "Bash(git add *)",
       "Bash(git commit -q -m 'API docs \\(OpenAPI 3.0\\), README with setup/deploy, engineering notes *)",
       "Bash(cp /private/tmp/claude-501/-Users-imteaj-Documents-Claude-QBO-Clone/2bf213d9-0e7a-463c-be1b-969e7083a9de/scratchpad/attack.ts ./_attack_tmp.ts)",
-      "Bash(node ./_attack_tmp.ts)"
+      "Bash(node ./_attack_tmp.ts)",
+      "Bash(npm run *)",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select count\\(*\\) from users where email='demo@khatabooks.app'; select count\\(*\\) from companies; select name from companies\")",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select c.name, coalesce\\(sum\\(jl.base_debit\\)-sum\\(jl.base_credit\\),0\\) from companies c left join journal_entries je on je.company_id=c.id and je.status='posted' left join journal_lines jl on jl.entry_id=je.id group by c.name\")",
+      "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select c.name, coalesce\\(sum\\(jl.base_debit\\)-sum\\(jl.base_credit\\),0\\) from companies c join accounts a on a.company_id=c.id left join journal_lines jl on jl.account_id=a.id left join journal_entries je on je.id=jl.entry_id and je.status='posted' group by c.name; select count\\(*\\) from journal_entries je join companies c on c.id=je.company_id where c.name in \\('Co1','Co2'\\)\")",
+      "Bash(git commit -q -m 'Notes: tenant-isolation lesson from adversarial audit *)"
     ]
   }
 }

@@ -23,6 +23,12 @@ One-line: rounding, SQL date-guards, and React stale-data races were the real bu
   postEntry accepts baseDebit/baseCredit overrides and base-only lines
   (txn 0.00 both sides) for the FX gain/loss leg. The DB CHECK allows a line
   when txn+base amounts sum > 0.
+- **Tenant isolation is an invariant too**: the adversarial audit (fresh-context
+  subagent) found postEntry accepted account IDs from other companies — a
+  cross-tenant posting unbalanced the victim's trial balance. Fixed at BOTH
+  layers (app guard + `jl_same_company` DB trigger, migration 006). Lesson:
+  every ID accepted from a client must be ownership-checked against the tenant,
+  and ledger invariants deserve DB-level enforcement, not just app checks.
 - **bill_lines/vendor_credit_lines needed discount_pct** because the shared
   computeDocTotals emits it — when adding a column to one doc-lines table,
   check all siblings that share the line math.

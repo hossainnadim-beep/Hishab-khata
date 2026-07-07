@@ -8,6 +8,8 @@ import { notFound } from '../../lib/errors.ts';
 import { postEntry, reverseEntry } from './posting.ts';
 import { setPeriodStatus, setFiscalYearStatus } from './periods.ts';
 import { revalueFx } from './fxRevalue.ts';
+import { resolveSourceRefs } from './sourceRefs.ts';
+import { d, money } from '../../lib/money.ts';
 
 export const ledgerRouter = Router({ mergeParams: true });
 
@@ -15,7 +17,7 @@ export const ledgerRouter = Router({ mergeParams: true });
 
 ledgerRouter.get('/journal', async (req: AuthedRequest, res, next) => {
   try {
-    const { from, to, account_id } = req.query as Record<string, string>;
+    const { from, to, account_id, source_type, source_id } = req.query as Record<string, string>;
     const limit = Math.min(Number(req.query.limit ?? 100), 1000);
     const offset = Number(req.query.offset ?? 0);
     let q = db('journal_entries as je')
@@ -27,10 +29,105 @@ ledgerRouter.get('/journal', async (req: AuthedRequest, res, next) => {
       .select('je.*');
     if (from) q = q.andWhere('je.txn_date', '>=', from);
     if (to) q = q.andWhere('je.txn_date', '<=', to);
+    if (source_type) q = q.andWhere('je.source_type', source_type);
+    if (source_id) q = q.andWhere('je.source_id', source_id);
     if (account_id) {
       q = q.whereIn('je.id', db('journal_lines').select('entry_id').where({ account_id }));
     }
-    res.json(await q);
+    const entries = await q;
+    const refs = await resolveSourceRefs(db, req.companyId!, entries);
+    res.json(
+      entries.map((e: any) => ({
+        ...e,
+        source_ref: refs.get(e.id)?.label ?? e.source_type,
+        source_route: refs.get(e.id)?.route ?? null,
+      })),
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** All journal entries backing one document — the "journal impact" panel. */
+ledgerRouter.get('/journal-for-source', async (req: AuthedRequest, res, next) => {
+  try {
+    const { source_id } = req.query as Record<string, string>;
+    if (!source_id) return res.json([]);
+    const entries = await db('journal_entries')
+      .where({ company_id: req.companyId, source_id, status: 'posted' })
+      .orderBy('entry_no');
+    const result = [];
+    for (const entry of entries) {
+      const lines = await db('journal_lines as jl')
+        .join('accounts as a', 'a.id', 'jl.account_id')
+        .where('jl.entry_id', entry.id)
+        .orderBy('jl.line_no')
+        .select('jl.*', 'a.code as account_code', 'a.name as account_name');
+      result.push({ ...entry, lines });
+    }
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** Drill-down: one account's ledger lines with running balance and source links. */
+ledgerRouter.get('/account-transactions/:accountId', async (req: AuthedRequest, res, next) => {
+  try {
+    const { from, to } = req.query as Record<string, string>;
+    const account = await db('accounts')
+      .where({ id: req.params.accountId, company_id: req.companyId })
+      .first();
+    if (!account) throw notFound('Account not found');
+
+    const [openRow] = await db('journal_lines as jl')
+      .join('journal_entries as je', 'je.id', 'jl.entry_id')
+      .where({ 'je.company_id': req.companyId, 'je.status': 'posted', 'jl.account_id': account.id })
+      .modify((q) => from && q.andWhere('je.txn_date', '<', from))
+      .select(db.raw("coalesce(sum(jl.base_debit) - sum(jl.base_credit), 0) as bal"));
+    const opening = from ? d(openRow.bal) : d(0);
+
+    const lines = await db('journal_lines as jl')
+      .join('journal_entries as je', 'je.id', 'jl.entry_id')
+      .where({ 'je.company_id': req.companyId, 'je.status': 'posted', 'jl.account_id': account.id })
+      .modify((q) => {
+        if (from) q.andWhere('je.txn_date', '>=', from);
+        if (to) q.andWhere('je.txn_date', '<=', to);
+      })
+      .orderBy([{ column: 'je.txn_date' }, { column: 'je.entry_no' }, { column: 'jl.line_no' }])
+      .select(
+        'jl.description', 'jl.debit', 'jl.credit', 'jl.base_debit', 'jl.base_credit',
+        'je.id as entry_id', 'je.entry_no', 'je.txn_date', 'je.memo',
+        'je.source_type', 'je.source_id', 'je.currency',
+      );
+
+    const refs = await resolveSourceRefs(
+      db, req.companyId!,
+      lines.map((l: any) => ({ id: l.entry_id, source_type: l.source_type, source_id: l.source_id })),
+    );
+
+    let running = opening;
+    const rows = lines.map((l: any) => {
+      running = running.plus(d(l.base_debit)).minus(d(l.base_credit));
+      return {
+        date: l.txn_date,
+        entryId: l.entry_id,
+        entryNo: Number(l.entry_no),
+        description: l.description ?? l.memo,
+        source: refs.get(l.entry_id)?.label ?? l.source_type,
+        sourceRoute: refs.get(l.entry_id)?.route ?? null,
+        debit: d(l.base_debit).isZero() ? '' : money(l.base_debit),
+        credit: d(l.base_credit).isZero() ? '' : money(l.base_credit),
+        balance: money(running),
+      };
+    });
+
+    res.json({
+      account: { id: account.id, code: account.code, name: account.name, type: account.type },
+      opening: money(opening),
+      rows,
+      closing: money(running),
+    });
   } catch (e) {
     next(e);
   }
@@ -50,7 +147,14 @@ ledgerRouter.get('/journal/:id', async (req: AuthedRequest, res, next) => {
     const reversal = await db('journal_entries')
       .where({ reverses_entry_id: entry.id })
       .first(['id', 'entry_no']);
-    res.json({ ...entry, lines, reversed_by: reversal ?? null });
+    const refs = await resolveSourceRefs(db, req.companyId!, [entry]);
+    res.json({
+      ...entry,
+      lines,
+      reversed_by: reversal ?? null,
+      source_ref: refs.get(entry.id)?.label ?? entry.source_type,
+      source_route: refs.get(entry.id)?.route ?? null,
+    });
   } catch (e) {
     next(e);
   }

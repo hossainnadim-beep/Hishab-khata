@@ -8,6 +8,11 @@ import {
 } from './service.ts';
 import { toXlsx, toPdf, type FlatReport } from './render.ts';
 import { documentPdf } from '../sales/pdf.ts';
+import {
+  statementProfitOrLoss,
+  statementFinancialPosition,
+  statementChangesInEquity,
+} from './ifrs.ts';
 
 export const reportsRouter = Router({ mergeParams: true });
 
@@ -290,6 +295,97 @@ reportsRouter.get('/customer-statement/:customerId', async (req: AuthedRequest, 
           ...report.rows.map((r: any) => [r.date, r.type, r.description ?? '', r.charges, r.payments, r.balance]),
         ],
         footer: ['', '', 'Closing balance', '', '', report.closing],
+      }],
+    }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---- IFRS statements ----
+
+reportsRouter.get('/statement-profit-loss', async (req: AuthedRequest, res, next) => {
+  try {
+    const { from, to } = period(req);
+    const cmp = comparePeriod(req, from, to);
+    const report = await statementProfitOrLoss(db, req.companyId!, { from, to, ...cmp });
+    const hasCmp = !!report.comparePeriod;
+    const cols = [
+      { label: '', width: 3 },
+      { label: 'Amount', width: 1.5, align: 'right' as const },
+      ...(hasCmp ? [{ label: 'Comparative', width: 1.5, align: 'right' as const }] : []),
+    ];
+    const r = (label: string, a: string, c: string | null) => [label, a, ...(hasCmp ? [c ?? ''] : [])];
+    await send(res, req, report, () => ({
+      title: 'Statement of Profit or Loss and OCI',
+      subtitle: `${from} to ${to}`,
+      sections: [{
+        columns: cols,
+        rows: [
+          ...report.lines.map((l) => r(l.label, l.amount, l.compare)),
+          r('Gross profit', report.grossProfit.amount, report.grossProfit.compare),
+          ...report.lines2.map((l) => r(l.label, l.amount, l.compare)),
+          r('Profit for the period', report.profitForPeriod.amount, report.profitForPeriod.compare),
+          r('Other comprehensive income', report.otherComprehensiveIncome.amount, report.otherComprehensiveIncome.compare),
+        ],
+        footer: r('Total comprehensive income', report.totalComprehensiveIncome.amount, report.totalComprehensiveIncome.compare),
+      }],
+    }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+reportsRouter.get('/statement-financial-position', async (req: AuthedRequest, res, next) => {
+  try {
+    const asOf = (req.query.as_of as string) ?? new Date().toISOString().slice(0, 10);
+    const compareAsOf = req.query.compare_as_of as string | undefined;
+    const report = await statementFinancialPosition(db, req.companyId!, asOf, compareAsOf);
+    const hasCmp = !!compareAsOf;
+    const cols = [
+      { label: '', width: 3 },
+      { label: 'Amount', width: 1.5, align: 'right' as const },
+      ...(hasCmp ? [{ label: 'Comparative', width: 1.5, align: 'right' as const }] : []),
+    ];
+    const r = (label: string, a: string, c?: string | null) => [label, a, ...(hasCmp ? [c ?? ''] : [])];
+    const sec = (heading: string, s: any) => ({
+      heading,
+      columns: cols,
+      rows: s.lines.map((l: any) => r(l.label, l.amount, l.compare)),
+      footer: r(`Total ${heading.toLowerCase()}`, s.total, s.compareTotal),
+    });
+    await send(res, req, report, () => ({
+      title: 'Statement of Financial Position',
+      subtitle: `As of ${asOf}`,
+      sections: [
+        sec('Non-current assets', report.nonCurrentAssets),
+        sec('Current assets', report.currentAssets),
+        { columns: cols, rows: [], footer: r('TOTAL ASSETS', report.totalAssets.amount, report.totalAssets.compare) },
+        sec('Equity', report.equity),
+        sec('Non-current liabilities', report.nonCurrentLiabilities),
+        sec('Current liabilities', report.currentLiabilities),
+        { columns: cols, rows: [], footer: r('TOTAL EQUITY AND LIABILITIES', report.totalEquityAndLiabilities.amount, report.totalEquityAndLiabilities.compare) },
+      ],
+    }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+reportsRouter.get('/statement-changes-equity', async (req: AuthedRequest, res, next) => {
+  try {
+    const { from, to } = period(req);
+    const report = await statementChangesInEquity(db, req.companyId!, { from, to });
+    await send(res, req, report, () => ({
+      title: 'Statement of Changes in Equity',
+      subtitle: `${from} to ${to}`,
+      sections: [{
+        columns: [
+          { label: '', width: 2 },
+          ...report.columns.map((c) => ({ label: c.label, width: 1.4, align: 'right' as const })),
+          { label: 'Total', width: 1.2, align: 'right' as const },
+        ],
+        rows: report.rows.map((row) => [row.label, ...row.cells, row.total]),
       }],
     }));
   } catch (e) {

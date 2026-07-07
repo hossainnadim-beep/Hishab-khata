@@ -232,11 +232,23 @@ salesRouter.patch('/invoices/:id', requireRole('data_entry'), async (req: Authed
   try {
     const body = parse(invoiceSchema, req.body);
     const result = await db.transaction(async (trx) => {
+      const before = await trx('invoices')
+        .where({ id: req.params.id, company_id: req.companyId })
+        .first(['customer_id', 'issue_date', 'due_date', 'currency', 'subtotal', 'tax_total', 'total', 'memo']);
       const invoice = await updateDraftInvoice(trx, req.companyId!, req.params.id, body);
       await audit(trx, {
         companyId: req.companyId!, userId: req.userId,
         action: 'invoice.updated', entityType: 'invoice', entityId: invoice.id,
-        details: { docNo: invoice.doc_no, total: invoice.total },
+        details: {
+          docNo: invoice.doc_no,
+          before,
+          after: {
+            customer_id: invoice.customer_id, issue_date: invoice.issue_date,
+            due_date: invoice.due_date, currency: invoice.currency,
+            subtotal: invoice.subtotal, tax_total: invoice.tax_total,
+            total: invoice.total, memo: invoice.memo,
+          },
+        },
       });
       return invoice;
     });

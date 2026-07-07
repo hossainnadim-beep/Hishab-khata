@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 import { d, money, Decimal } from '../../lib/money.ts';
 
 /** Per-account signed base balance (debit positive) with opening/movement split. */
-async function accountBalances(
+export async function accountBalances(
   db: Knex,
   companyId: string,
   opts: { from?: string; to?: string },
@@ -47,6 +47,7 @@ export async function trialBalance(db: Knex, companyId: string, asOf: string) {
   const rows = balances
     .filter((b) => !b.closing.isZero())
     .map((b) => ({
+      accountId: b.id,
       code: b.code,
       account: b.name,
       type: b.type,
@@ -85,6 +86,7 @@ export async function profitAndLoss(db: Knex, companyId: string, opts: PeriodOpt
     const rows = current
       .filter((b) => b.type === type)
       .map((b) => ({
+        accountId: b.id,
         code: b.code,
         account: b.name,
         amount: b.movement.times(sign),
@@ -95,6 +97,7 @@ export async function profitAndLoss(db: Knex, companyId: string, opts: PeriodOpt
     const compareTotal = compareById ? rows.reduce((a, r) => a.plus(r.compare ?? 0), d(0)) : null;
     return {
       rows: rows.map((r) => ({
+        accountId: r.accountId,
         code: r.code,
         account: r.account,
         amount: money(r.amount),
@@ -128,7 +131,7 @@ export async function balanceSheet(db: Knex, companyId: string, asOf: string, co
     const bucket = (type: string, sign: 1 | -1) =>
       balances
         .filter((b) => b.type === type && !b.closing.isZero())
-        .map((b) => ({ code: b.code, account: b.name, subtype: b.subtype, amount: b.closing.times(sign) }));
+        .map((b) => ({ accountId: b.id, code: b.code, account: b.name, subtype: b.subtype, amount: b.closing.times(sign) }));
     // Net income to date rolls into equity as current earnings.
     const netIncome = balances
       .filter((b) => b.type === 'income' || b.type === 'expense')
@@ -142,13 +145,15 @@ export async function balanceSheet(db: Knex, companyId: string, asOf: string, co
     const totalAssets = sum(b.assets);
     const totalLiabilities = sum(b.liabilities);
     const equityRows = [
-      ...b.equity.map((r) => ({ code: r.code, account: r.account, amount: money(r.amount) })),
-      { code: '', account: 'Current Earnings', amount: money(b.netIncome) },
+      ...b.equity.map((r) => ({ accountId: r.accountId, code: r.code, account: r.account, amount: money(r.amount) })),
+      { accountId: null, code: '', account: 'Current Earnings', amount: money(b.netIncome) },
     ];
     const totalEquity = sum(b.equity).plus(b.netIncome);
+    const mapRows = (rows: any[]) =>
+      rows.map((r) => ({ accountId: r.accountId, code: r.code, account: r.account, amount: money(r.amount) }));
     return {
-      assets: { rows: b.assets.map((r) => ({ code: r.code, account: r.account, amount: money(r.amount) })), total: money(totalAssets) },
-      liabilities: { rows: b.liabilities.map((r) => ({ code: r.code, account: r.account, amount: money(r.amount) })), total: money(totalLiabilities) },
+      assets: { rows: mapRows(b.assets), total: money(totalAssets) },
+      liabilities: { rows: mapRows(b.liabilities), total: money(totalLiabilities) },
       equity: { rows: equityRows, total: money(totalEquity) },
       totalLiabilitiesAndEquity: money(totalLiabilities.plus(totalEquity)),
       balanced: totalAssets.equals(totalLiabilities.plus(totalEquity)),
@@ -250,7 +255,7 @@ export async function generalLedger(
     .orderBy([{ column: 'je.txn_date' }, { column: 'je.entry_no' }, { column: 'jl.line_no' }])
     .select(
       'jl.account_id', 'jl.description', 'jl.base_debit', 'jl.base_credit',
-      'je.txn_date', 'je.entry_no', 'je.memo', 'je.source_type',
+      'je.id as entry_id', 'je.txn_date', 'je.entry_no', 'je.memo', 'je.source_type',
     );
 
   const byAccount = new Map<string, any[]>();
@@ -269,6 +274,7 @@ export async function generalLedger(
       running = running.plus(d(l.base_debit)).minus(d(l.base_credit));
       return {
         date: l.txn_date,
+        entryId: l.entry_id,
         entryNo: Number(l.entry_no),
         source: l.source_type,
         description: l.description ?? l.memo,
@@ -278,6 +284,7 @@ export async function generalLedger(
       };
     });
     sections.push({
+      accountId: a.id,
       accountCode: a.code,
       accountName: a.name,
       opening: money(opening),

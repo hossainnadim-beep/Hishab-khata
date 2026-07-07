@@ -106,10 +106,22 @@ purchasesRouter.patch('/bills/:id', requireRole('data_entry'), async (req: Authe
   try {
     const body = parse(billSchema, req.body);
     const result = await db.transaction(async (trx) => {
+      const before = await trx('bills')
+        .where({ id: req.params.id, company_id: req.companyId })
+        .first(['vendor_id', 'vendor_ref', 'issue_date', 'due_date', 'currency', 'subtotal', 'tax_total', 'total', 'memo']);
       const bill = await updateDraftBill(trx, req.companyId!, req.params.id, body);
       await audit(trx, {
         companyId: req.companyId!, userId: req.userId,
         action: 'bill.updated', entityType: 'bill', entityId: bill.id,
+        details: {
+          docNo: bill.doc_no,
+          before,
+          after: {
+            vendor_id: bill.vendor_id, vendor_ref: bill.vendor_ref,
+            issue_date: bill.issue_date, due_date: bill.due_date, currency: bill.currency,
+            subtotal: bill.subtotal, tax_total: bill.tax_total, total: bill.total, memo: bill.memo,
+          },
+        },
       });
       return bill;
     });

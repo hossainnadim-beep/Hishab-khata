@@ -12,6 +12,8 @@ import { salesRouter } from './modules/sales/routes.ts';
 import { purchasesRouter } from './modules/purchases/routes.ts';
 import { bankingRouter } from './modules/banking/routes.ts';
 import { reportsRouter } from './modules/reports/routes.ts';
+import { searchRouter } from './modules/search/routes.ts';
+import { eventsRouter } from './modules/events/routes.ts';
 
 export function createApp() {
   const app = express();
@@ -32,7 +34,10 @@ export function createApp() {
   scoped.use('/purchases', purchasesRouter);
   scoped.use('/banking', bankingRouter);
   scoped.use('/reports', reportsRouter);
+  scoped.use('/search', searchRouter);
   app.use('/api/companies/:companyId', requireAuth, companyContext, scoped);
+  // SSE endpoint authenticates via query token (EventSource cannot set headers)
+  app.use('/api/companies/:companyId/events', eventsRouter);
 
   // Error handler: ApiError → its status; Postgres RAISE/constraint → 400.
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

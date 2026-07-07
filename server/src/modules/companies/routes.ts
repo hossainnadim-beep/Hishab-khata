@@ -165,17 +165,20 @@ companyRouter.delete('/members/:userId', requireRole('owner'), async (req: Authe
   }
 });
 
-// Activity log
+// Activity log (immutable audit trail). Filter by entity for per-transaction audit.
 companyRouter.get('/activity', async (req: AuthedRequest, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 100), 500);
-    const rows = await db('audit_log as a')
+    const { entity_type, entity_id } = req.query as Record<string, string>;
+    const q = db('audit_log as a')
       .leftJoin('users as u', 'u.id', 'a.user_id')
       .where('a.company_id', req.companyId)
       .orderBy('a.created_at', 'desc')
       .limit(limit)
       .select('a.id', 'a.action', 'a.entity_type', 'a.entity_id', 'a.details', 'a.created_at', 'u.name as user_name');
-    res.json(rows);
+    if (entity_type) q.andWhere('a.entity_type', entity_type);
+    if (entity_id) q.andWhere('a.entity_id', entity_id);
+    res.json(await q);
   } catch (e) {
     next(e);
   }

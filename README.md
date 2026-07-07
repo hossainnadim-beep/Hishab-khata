@@ -37,6 +37,11 @@ Every business document (invoice, bill, payment, credit note, expense claim,
 bank rule, stock adjustment, FX revaluation) reduces to journal entries through
 one posting service (`server/src/modules/ledger/posting.ts`).
 
+Audit records are immutable too (a fourth trigger blocks `UPDATE`/`DELETE` on
+`audit_log`), and each audit insert fires a Postgres `NOTIFY` that the API
+relays to browsers as Server-Sent Events, so every open report reflects a new
+posting the instant it commits.
+
 ## Feature map
 
 - **Core ledger** — chart of accounts from a seedable template, manual journals,
@@ -58,12 +63,31 @@ one posting service (`server/src/modules/ledger/posting.ts`).
   jurisdictions are new `tax_codes` rows — no code changes.
 - **Inventory** — items/services, weighted-average costing, stock on hand,
   COGS posted at average cost on sale, stock adjustments with balancing entries.
-- **Reporting** — Trial Balance, P&L (with previous-period/year comparatives),
-  Balance Sheet, Cash Flow (indirect, always reconciles), General Ledger,
-  AR/AP aging, VAT & withholding summary, Stock on Hand, customer statements —
-  every report exports to XLSX and PDF (`?format=xlsx|pdf`).
+- **Reporting** — IFRS-presentation Statements of Profit or Loss & OCI,
+  Financial Position, and Changes in Equity, plus Cash Flow (indirect), Trial
+  Balance, detailed P&L and Balance Sheet, General Ledger, AR/AP aging, VAT &
+  withholding summary, Stock on Hand, and customer statements. All statements
+  are derived from the same posted-journal aggregation as the trial balance, so
+  they reconcile to it by construction; all support period selection and
+  comparatives and export to XLSX and PDF (`?format=xlsx|pdf`).
+- **Drill-down everywhere** — every amount in every report is a link: a report
+  line drills to the contributing account transactions (with running balance),
+  each transaction to its journal entry (debits/credits, accounts, tax lines),
+  and each entry back to its source document. No dead-end numbers.
+- **Live updates** — reports and lists refetch automatically after any posting,
+  including from another session, via a Postgres `NOTIFY` on the audit log
+  streamed to the browser over Server-Sent Events. No manual refresh.
+- **Per-transaction audit** — every document has an Audit tab showing its
+  complete immutable history: who created/edited/posted/voided it, when, and
+  before/after values for edits. Audit records reject `UPDATE`/`DELETE` at the
+  database level.
 - **Platform** — multi-tenant company files, roles (owner / accountant /
   data_entry / read_only), audit trail on every posting, activity log.
+- **Responsive UI** — a left navigation column that collapses to an icon rail
+  on desktop (state remembered) and a hamburger drawer on mobile; a top bar
+  with global search (`/` shortcut) and a quick-create menu; tables that become
+  cards on small screens; loading skeletons and empty states. Works at mobile,
+  tablet, and desktop widths.
 
 ## Setup
 
@@ -102,7 +126,7 @@ Environment variables (all optional in development):
 ### Tests
 
 ```bash
-npm test          # 37 tests: unit, end-to-end flows, and fast-check property
+npm test          # 42 tests: unit, end-to-end flows, and fast-check property
                   # tests that post randomized entries and assert the trial
                   # balance never moves off 0.00
 ```

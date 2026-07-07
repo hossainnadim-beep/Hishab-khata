@@ -35,7 +35,10 @@
       "Bash(git commit -q -m 'Notes: tenant-isolation lesson from adversarial audit *)",
       "Bash(cd \"/Users/imteaj/Documents/Claude QBO Clone/web\" && npx tsc --noEmit 2>&1 | head -20; echo \"tsc exit: $?\" && cd ../server && npx vitest run 2>&1 | grep -E \"Test Files|Tests \")",
       "Bash(TOKEN=$\\(curl -s -X POST localhost:4000/api/auth/login -H 'content-type: application/json' -d '{\"email\":\"demo@khatabooks.app\",\"password\":\"demo1234\"}' | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>console.log\\(JSON.parse\\(d\\).token\\)\\)\"\\) && CO=$\\(curl -s localhost:4000/api/auth/me -H \"authorization: Bearer $TOKEN\" | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>console.log\\(JSON.parse\\(d\\).companies[0].id\\)\\)\"\\) && curl -s -N --max-time 3 \"localhost:4000/api/companies/$CO/events?token=$TOKEN\" -D - | head -20; tail -5 /tmp/khata-server.log)",
-      "Bash(awk '{print $2, $9}')"
+      "Bash(awk '{print $2, $9}')",
+      "Bash(curl -s -X POST localhost:4000/api/auth/login -H 'content-type: application/json' -d '{\"email\":\"demo@khatabooks.app\",\"password\":\"demo1234\"}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(git commit -q -m 'Docs: phase 2 README, OpenAPI \\(IFRS, drill-down, SSE, search, audit\\), notes *)"
     ]
   }
 }

@@ -445,6 +445,34 @@ paths:
         - { name: to, in: query, required: true, schema: { type: string } }
         - { name: account_id, in: query, schema: { type: string } }
       responses: { "200": { description: Per-account entries with running balances } }
+  /companies/{companyId}/reports/statement-profit-loss:
+    get:
+      tags: [reports]
+      summary: IFRS Statement of Profit or Loss and Other Comprehensive Income
+      description: Revenue, cost of sales, gross profit, other income, expenses, profit for the period, OCI (nil in scope), total comprehensive income. Each line carries account ids for drill-down. Derived from posted journal lines, so it reconciles to the trial balance.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+        - { name: compare, in: query, schema: { type: string, enum: [previous_period, previous_year] } }
+        - { name: format, in: query, schema: { type: string, enum: [json, xlsx, pdf] } }
+      responses: { "200": { description: Statement } }
+  /companies/{companyId}/reports/statement-financial-position:
+    get:
+      tags: [reports]
+      summary: IFRS Statement of Financial Position (current/non-current classification)
+      parameters:
+        - { name: as_of, in: query, schema: { type: string } }
+        - { name: compare_as_of, in: query, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string } }
+      responses: { "200": { description: "Statement; balanced flag; totalAssets == totalEquityAndLiabilities" } }
+  /companies/{companyId}/reports/statement-changes-equity:
+    get:
+      tags: [reports]
+      summary: IFRS Statement of Changes in Equity (opening → profit → owner movements → closing per equity component)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: Statement } }
   /companies/{companyId}/reports/ar-aging:
     get: { tags: [reports], summary: "Buckets: Current / 1-30 / 31-60 / 61-90 / 90+", responses: { "200": { description: Report } } }
   /companies/{companyId}/reports/ap-aging:
@@ -471,6 +499,50 @@ paths:
       tags: [reports]
       summary: Branded PDF (docType = invoice | quote | credit-note)
       responses: { "200": { description: application/pdf } }
+
+  /companies/{companyId}/ledger/account-transactions/{accountId}:
+    get:
+      tags: [ledger]
+      summary: Drill-down — one account's ledger lines with running balance and source-document links
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses: { "200": { description: "{account, opening, rows[], closing}" } }
+  /companies/{companyId}/ledger/journal-for-source:
+    get:
+      tags: [ledger]
+      summary: All journal entries backing one document (the journal-impact panel)
+      parameters:
+        - { name: source_id, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: Entries with full lines } }
+
+  /companies/{companyId}/search:
+    get:
+      tags: [reports]
+      summary: Global search across documents, contacts, items, accounts, payments
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+      responses: { "200": { description: "Ranked results with type, label, and route" } }
+
+  /companies/{companyId}/events:
+    get:
+      tags: [reports]
+      summary: Server-Sent Events stream — emits a message whenever the company's ledger changes
+      description: EventSource cannot set headers, so the JWT is passed as the `token` query param and membership is re-checked. Used by the client to refetch reports live after any posting.
+      security: []
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: "text/event-stream" } }
+
+  /companies/{companyId}/activity:
+    get:
+      tags: [companies]
+      summary: Immutable audit trail; filter by entity for per-transaction audit
+      parameters:
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: entity_id, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+      responses: { "200": { description: "Audit records (edits include before/after in details)" } }
 
 components:
   securitySchemes:

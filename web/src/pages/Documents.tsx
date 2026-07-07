@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, co, fmtMoney, today } from '../api';
-import { ApiSelect, AsyncButton, Badge, ErrorMsg, Field, Modal, Spinner, useFetch } from '../components';
+import { ApiSelect, AsyncButton, Badge, EmptyState, ErrorMsg, Field, Modal, Spinner, useFetch } from '../components';
 
 export type DocKind = 'invoice' | 'quote' | 'credit-note' | 'bill' | 'vendor-credit';
 
@@ -9,6 +9,7 @@ const CONFIG: Record<DocKind, {
   label: string;
   plural: string;
   base: string; // API base under company
+  entityType: string; // audit_log entity_type
   contactKind: 'customer' | 'vendor';
   contactField: 'customerId' | 'vendorId';
   contactNameCol: string;
@@ -21,28 +22,28 @@ const CONFIG: Record<DocKind, {
   discount?: boolean;
 }> = {
   invoice: {
-    label: 'Invoice', plural: 'Invoices', base: '/sales/invoices',
+    label: 'Invoice', plural: 'Invoices', base: '/sales/invoices', entityType: 'invoice',
     contactKind: 'customer', contactField: 'customerId', contactNameCol: 'customer_name',
     hasDueDate: true, postable: true, pdf: 'invoice', applyTo: null, discount: true,
   },
   quote: {
-    label: 'Quote', plural: 'Quotes', base: '/sales/quotes',
+    label: 'Quote', plural: 'Quotes', base: '/sales/quotes', entityType: 'quote',
     contactKind: 'customer', contactField: 'customerId', contactNameCol: 'customer_name',
     hasDueDate: false, postable: false, pdf: 'quote', applyTo: null, isQuote: true, discount: true,
   },
   'credit-note': {
-    label: 'Credit Note', plural: 'Credit Notes', base: '/sales/credit-notes',
+    label: 'Credit Note', plural: 'Credit Notes', base: '/sales/credit-notes', entityType: 'credit_note',
     contactKind: 'customer', contactField: 'customerId', contactNameCol: 'customer_name',
     hasDueDate: false, postable: true, pdf: 'credit-note',
     applyTo: { kind: 'invoice', label: 'invoice' }, discount: true,
   },
   bill: {
-    label: 'Bill', plural: 'Bills', base: '/purchases/bills',
+    label: 'Bill', plural: 'Bills', base: '/purchases/bills', entityType: 'bill',
     contactKind: 'vendor', contactField: 'vendorId', contactNameCol: 'vendor_name',
     hasDueDate: true, postable: true, pdf: null, applyTo: null, vendorRef: true,
   },
   'vendor-credit': {
-    label: 'Vendor Credit', plural: 'Vendor Credits', base: '/purchases/vendor-credits',
+    label: 'Vendor Credit', plural: 'Vendor Credits', base: '/purchases/vendor-credits', entityType: 'vendor_credit',
     contactKind: 'vendor', contactField: 'vendorId', contactNameCol: 'vendor_name',
     hasDueDate: false, postable: true, pdf: null,
     applyTo: { kind: 'bill', label: 'bill' },
@@ -54,7 +55,8 @@ const CONFIG: Record<DocKind, {
 export function DocList({ kind }: { kind: DocKind }) {
   const cfg = CONFIG[kind];
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
+  const [searchParams] = useSearchParams();
+  const [status, setStatus] = useState(searchParams.get('status') ?? '');
   const { data, error, loading } = useFetch<any[]>(
     co(`${cfg.base}${status ? `?status=${status}` : ''}`), [status],
   );
@@ -74,31 +76,56 @@ export function DocList({ kind }: { kind: DocKind }) {
         <Link className="btn" to={`/${kind}s/new`}>+ New {cfg.label}</Link>
       </div>
       <ErrorMsg error={error} />
-      {loading ? <Spinner /> : (
-        <table className="grid">
-          <thead>
-            <tr>
-              <th>Number</th><th>{cfg.contactKind === 'customer' ? 'Customer' : 'Vendor'}</th>
-              <th>Date</th>{cfg.hasDueDate && <th>Due</th>}
-              <th>Status</th><th className="num">Total</th>
-              {!cfg.isQuote && <th className="num">Balance</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {(data ?? []).map((d) => (
-              <tr key={d.id} className="clickable" onClick={() => navigate(`/${kind}s/${d.id}`)}>
-                <td>{d.doc_no}</td>
-                <td>{d[cfg.contactNameCol]}</td>
-                <td>{d.issue_date}</td>
-                {cfg.hasDueDate && <td>{d.due_date}</td>}
-                <td><Badge status={d.status} /></td>
-                <td className="num">{d.currency} {fmtMoney(d.total)}</td>
-                {!cfg.isQuote && <td className="num">{fmtMoney(d.balance_due ?? d.balance)}</td>}
+      {loading ? <Spinner /> : !data?.length ? (
+        <EmptyState
+          message={`No ${cfg.plural.toLowerCase()} yet.`}
+          action={<Link className="btn" to={`/${kind}s/new`}>Create your first {cfg.label.toLowerCase()}</Link>}
+        />
+      ) : (
+        <>
+          <table className="grid hide-mobile">
+            <thead>
+              <tr>
+                <th>Number</th><th>{cfg.contactKind === 'customer' ? 'Customer' : 'Vendor'}</th>
+                <th>Date</th>{cfg.hasDueDate && <th>Due</th>}
+                <th>Status</th><th className="num">Total</th>
+                {!cfg.isQuote && <th className="num">Balance</th>}
               </tr>
+            </thead>
+            <tbody>
+              {data.map((d) => (
+                <tr key={d.id} className="clickable" onClick={() => navigate(`/${kind}s/${d.id}`)}>
+                  <td>{d.doc_no}</td>
+                  <td>{d[cfg.contactNameCol]}</td>
+                  <td>{d.issue_date}</td>
+                  {cfg.hasDueDate && <td>{d.due_date}</td>}
+                  <td><Badge status={d.status} /></td>
+                  <td className="num">{d.currency} {fmtMoney(d.total)}</td>
+                  {!cfg.isQuote && <td className="num">{fmtMoney(d.balance_due ?? d.balance)}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mobile-cards">
+            {data.map((d) => (
+              <Link className="doc-card" key={d.id} to={`/${kind}s/${d.id}`}>
+                <div className="dc-top">
+                  <span className="dc-title">{d.doc_no}</span>
+                  <span className="dc-amount">{d.currency} {fmtMoney(d.total)}</span>
+                </div>
+                <div className="dc-top">
+                  <span className="dc-sub">
+                    {d[cfg.contactNameCol]} · {d.issue_date}
+                    {!cfg.isQuote && Number(d.balance_due ?? d.balance) > 0
+                      ? ` · due ${fmtMoney(d.balance_due ?? d.balance)}`
+                      : ''}
+                  </span>
+                  <Badge status={d.status} />
+                </div>
+              </Link>
             ))}
-            {!data?.length && <tr><td colSpan={7} className="muted">Nothing here yet.</td></tr>}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -361,6 +388,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
+  const [tab, setTab] = useState<'details' | 'journal' | 'audit'>('details');
 
   if (loading) return <Spinner />;
   if (error) return <ErrorMsg error={error} />;
@@ -431,7 +459,16 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       </div>
       <ErrorMsg error={actionError} />
 
-      <div className="card">
+      <div className="tabs">
+        <button className={`tab ${tab === 'details' ? 'active' : ''}`} onClick={() => setTab('details')}>Details</button>
+        <button className={`tab ${tab === 'journal' ? 'active' : ''}`} onClick={() => setTab('journal')}>Journal impact</button>
+        <button className={`tab ${tab === 'audit' ? 'active' : ''}`} onClick={() => setTab('audit')}>Audit</button>
+      </div>
+
+      {tab === 'journal' && <JournalImpact docId={doc.id} status={doc.status} />}
+      {tab === 'audit' && <AuditTrail entityType={cfg.entityType} entityId={doc.id} />}
+
+      <div className="card" style={{ display: tab === 'details' ? 'block' : 'none' }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div>
             <div className="muted">{cfg.contactKind === 'customer' ? 'Customer' : 'Vendor'}</div>
@@ -478,10 +515,15 @@ export function DocDetail({ kind }: { kind: DocKind }) {
           <>
             <h2>Payments</h2>
             <table className="grid">
-              <thead><tr><th>Receipt</th><th>Date</th><th className="num">Amount</th></tr></thead>
+              <thead><tr><th>Receipt</th><th>Date</th><th className="num">Amount</th><th>Journal</th></tr></thead>
               <tbody>
                 {doc.payments.map((p: any, i: number) => (
-                  <tr key={i}><td>{p.doc_no}</td><td>{p.payment_date}</td><td className="num">{fmtMoney(p.amount)}</td></tr>
+                  <tr key={i}>
+                    <td>{p.doc_no}</td>
+                    <td>{p.payment_date}</td>
+                    <td className="num">{fmtMoney(p.amount)}</td>
+                    <td>{p.journal_entry_id ? <Link to={`/journal/${p.journal_entry_id}`}>view entry</Link> : ''}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -511,6 +553,113 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       {applyOpen && cfg.applyTo && (
         <ApplyModal kind={kind} doc={doc} target={cfg.applyTo} onClose={() => { setApplyOpen(false); reload(); }} />
       )}
+    </div>
+  );
+}
+
+/** Journal impact: every posted entry backing this document, with full Dr/Cr breakup. */
+function JournalImpact({ docId, status }: { docId: string; status: string }) {
+  const { data, error, loading } = useFetch<any[]>(
+    co(`/ledger/journal-for-source?source_id=${docId}`),
+  );
+  if (loading) return <Spinner />;
+  if (error) return <ErrorMsg error={error} />;
+  if (!data?.length) {
+    return (
+      <EmptyState
+        message={
+          status === 'draft'
+            ? 'No journal entries yet — drafts post to the ledger when you post the document.'
+            : 'No journal entries found for this document.'
+        }
+      />
+    );
+  }
+  return (
+    <>
+      {data.map((je) => (
+        <div className="je-panel" key={je.id}>
+          <div className="je-head">
+            <Link to={`/journal/${je.id}`}><strong>Entry #{je.entry_no}</strong></Link>
+            <span>{je.txn_date}</span>
+            <span>{je.source_type.replace(/_/g, ' ')}</span>
+            <span>{je.currency}{Number(je.exchange_rate) !== 1 ? ` @ ${Number(je.exchange_rate)}` : ''}</span>
+            {je.memo && <span className="muted">{je.memo}</span>}
+          </div>
+          <table className="grid" style={{ border: 'none' }}>
+            <thead>
+              <tr>
+                <th>Account</th><th>Description</th>
+                <th className="num">Debit</th><th className="num">Credit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {je.lines.map((l: any) => (
+                <tr key={l.id}>
+                  <td>
+                    <Link to={`/accounts/${l.account_id}/transactions`}>
+                      {l.account_code} {l.account_name}
+                    </Link>
+                  </td>
+                  <td>{l.description}</td>
+                  <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : Number(l.base_debit) ? fmtMoney(l.base_debit) : ''}</td>
+                  <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : Number(l.base_credit) ? fmtMoney(l.base_credit) : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Immutable audit trail for one entity: who did what, when, with before/after. */
+export function AuditTrail({ entityType, entityId }: { entityType: string; entityId: string }) {
+  const { data, error, loading } = useFetch<any[]>(
+    co(`/activity?entity_type=${entityType}&entity_id=${entityId}&limit=100`),
+  );
+  if (loading) return <Spinner />;
+  if (error) return <ErrorMsg error={error} />;
+  if (!data?.length) return <EmptyState message="No audit records for this transaction." />;
+  return (
+    <div className="card">
+      <p className="muted mb0">
+        Complete immutable history — records cannot be edited or deleted, even by administrators.
+      </p>
+      <table className="grid" style={{ marginTop: 10 }}>
+        <thead>
+          <tr><th>When</th><th>Who</th><th>Action</th><th>Changes</th></tr>
+        </thead>
+        <tbody>
+          {data.map((a) => (
+            <tr key={a.id}>
+              <td style={{ whiteSpace: 'nowrap' }}>{new Date(a.created_at).toLocaleString()}</td>
+              <td>{a.user_name ?? 'system'}</td>
+              <td>{a.action.replace(/[._]/g, ' ')}</td>
+              <td>
+                {a.details?.before ? (
+                  <details>
+                    <summary className="amount-link">before / after</summary>
+                    <div className="row" style={{ alignItems: 'flex-start', marginTop: 6 }}>
+                      <pre style={{ fontSize: 11, margin: 0, flex: 1, overflow: 'auto' }}>
+                        {JSON.stringify(a.details.before, null, 1)}
+                      </pre>
+                      <pre style={{ fontSize: 11, margin: 0, flex: 1, overflow: 'auto' }}>
+                        {JSON.stringify(a.details.after, null, 1)}
+                      </pre>
+                    </div>
+                  </details>
+                ) : a.details ? (
+                  <span className="muted" style={{ fontSize: 12 }}>{JSON.stringify(a.details)}</span>
+                ) : (
+                  ''
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

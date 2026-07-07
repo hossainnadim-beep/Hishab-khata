@@ -73,7 +73,7 @@ purchasesRouter.get('/bills/:id', async (req: AuthedRequest, res, next) => {
     const allocations = await db('payment_allocations as pa')
       .join('payments as p', 'p.id', 'pa.payment_id')
       .where({ 'pa.doc_type': 'bill', 'pa.doc_id': bill.id, 'p.status': 'active' })
-      .select('pa.amount', 'p.doc_no', 'p.payment_date');
+      .select('pa.amount', 'p.doc_no', 'p.payment_date', 'p.journal_entry_id');
     const credits = await db('vendor_credit_applications as va')
       .join('vendor_credits as vc', 'vc.id', 'va.vendor_credit_id')
       .where('va.bill_id', bill.id)

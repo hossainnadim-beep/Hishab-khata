@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api, co, today } from '../api';
 import { AsyncButton, Badge, ErrorMsg, Field, Modal, Spinner, useFetch } from '../components';
 
@@ -96,7 +96,10 @@ function AccountsTab() {
           {(data ?? []).map((a) => (
             <tr key={a.id}>
               <td>{a.code}</td>
-              <td>{a.name}{a.is_system && <span className="muted"> · system</span>}</td>
+              <td>
+                <Link to={`/accounts/${a.id}/transactions`}>{a.name}</Link>
+                {a.is_system && <span className="muted"> · system</span>}
+              </td>
               <td>{a.type}</td><td>{a.subtype}</td><td>{a.currency}</td>
               <td className="right">
                 <button className="btn secondary sm" onClick={() => setEditing(a)}>Edit</button>{' '}

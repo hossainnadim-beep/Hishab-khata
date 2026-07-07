@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { co, fmtMoney, today } from '../api';
 import { Spinner, useFetch } from '../components';
 
@@ -11,24 +11,25 @@ export default function Dashboard() {
   const { data: activity } = useFetch<any[]>(co('/activity?limit=12'));
 
   const cash = (banks ?? []).reduce((a, b) => a + Number(b.balance), 0);
+  const navigate = useNavigate();
 
   return (
     <div>
       <h1>Dashboard</h1>
       <div className="kpis">
-        <div className="kpi">
+        <div className="kpi clickable" onClick={() => navigate('/banking')}>
           <div className="label">Cash & bank</div>
           <div className="value">{fmtMoney(cash)}</div>
         </div>
-        <div className="kpi">
+        <div className="kpi clickable" onClick={() => navigate('/invoices?status=open')}>
           <div className="label">Owed to you (AR)</div>
           <div className="value">{fmtMoney(ar?.totals?.total ?? 0)}</div>
         </div>
-        <div className="kpi">
+        <div className="kpi clickable" onClick={() => navigate('/bills?status=open')}>
           <div className="label">You owe (AP)</div>
           <div className="value">{fmtMoney(ap?.totals?.total ?? 0)}</div>
         </div>
-        <div className="kpi">
+        <div className="kpi clickable" onClick={() => navigate('/reports')}>
           <div className="label">Profit this month</div>
           <div className="value">{fmtMoney(pl?.netIncome ?? 0)}</div>
         </div>
@@ -53,7 +54,7 @@ export default function Dashboard() {
                 <tbody>
                   {banks.map((b) => (
                     <tr key={b.id}>
-                      <td>{b.name}{b.currency ? ` (${b.currency})` : ''}</td>
+                      <td><Link to={`/accounts/${b.id}/transactions`}>{b.name}{b.currency ? ` (${b.currency})` : ''}</Link></td>
                       <td className="num">{fmtMoney(b.balance)}</td>
                       <td className="right">
                         {b.unmatched_count > 0 && (

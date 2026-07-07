@@ -29,6 +29,27 @@ export class ApiError extends Error {
   }
 }
 
+// ---- data change bus: any successful mutation (or SSE posting event from
+// another session) notifies subscribers so mounted views refetch instantly ----
+const changeListeners = new Set<() => void>();
+let bumpTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function onDataChange(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+export function bumpData() {
+  if (bumpTimer) clearTimeout(bumpTimer);
+  bumpTimer = setTimeout(() => {
+    for (const l of changeListeners) l();
+  }, 150);
+}
+
+export function getToken() {
+  return token;
+}
+
 async function request(method: string, path: string, body?: unknown): Promise<any> {
   const res = await fetch(path, {
     method,
@@ -46,6 +67,7 @@ async function request(method: string, path: string, body?: unknown): Promise<an
   const contentType = res.headers.get('content-type') ?? '';
   const data = contentType.includes('json') ? await res.json() : await res.text();
   if (!res.ok) throw new ApiError(res.status, (data as any)?.error ?? 'Request failed');
+  if (method !== 'GET') bumpData();
   return data;
 }
 

@@ -42,7 +42,7 @@ function JournalList() {
               <tr key={e.id} className="clickable" onClick={() => navigate(`/journal/${e.id}`)}>
                 <td>{e.entry_no}</td>
                 <td>{e.txn_date}</td>
-                <td>{e.source_type.replace(/_/g, ' ')}</td>
+                <td>{e.source_ref ?? e.source_type.replace(/_/g, ' ')}</td>
                 <td>{e.memo}</td>
                 <td>{e.currency}{Number(e.exchange_rate) !== 1 ? ` @ ${Number(e.exchange_rate)}` : ''}</td>
               </tr>
@@ -85,9 +85,18 @@ function EntryDetail() {
       <ErrorMsg error={actionError} />
       <div className="card">
         <p className="muted">
-          {entry.txn_date} · {entry.source_type.replace(/_/g, ' ')} · {entry.currency}
+          {entry.txn_date} ·{' '}
+          {entry.source_route ? (
+            <Link to={entry.source_route}>{entry.source_ref}</Link>
+          ) : (
+            entry.source_ref ?? entry.source_type.replace(/_/g, ' ')
+          )}
+          {' · '}{entry.currency}
           {Number(entry.exchange_rate) !== 1 && ` @ ${Number(entry.exchange_rate)}`}
           {entry.memo && ` — ${entry.memo}`}
+          {entry.reverses_entry_id && (
+            <> · <Link to={`/journal/${entry.reverses_entry_id}`}>reverses an earlier entry</Link></>
+          )}
           {entry.reversed_by && (
             <> · <span className="badge voided">reversed by <Link to={`/journal/${entry.reversed_by.id}`}>#{entry.reversed_by.entry_no}</Link></span></>
           )}
@@ -103,7 +112,11 @@ function EntryDetail() {
           <tbody>
             {entry.lines.map((l: any) => (
               <tr key={l.id}>
-                <td>{l.account_code} {l.account_name}</td>
+                <td>
+                  <Link to={`/accounts/${l.account_id}/transactions`}>
+                    {l.account_code} {l.account_name}
+                  </Link>
+                </td>
                 <td>{l.description}</td>
                 <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
                 <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>

@@ -182,28 +182,28 @@ export async function cashFlow(db: Knex, companyId: string, opts: { from: string
   const cashDelta = balances.filter(isCash).reduce((a, b) => a.plus(b.movement), d(0));
   const cashOpening = balances.filter(isCash).reduce((a, b) => a.plus(b.opening), d(0));
 
-  const operating: Array<{ label: string; amount: Decimal }> = [];
-  const investing: Array<{ label: string; amount: Decimal }> = [];
-  const financing: Array<{ label: string; amount: Decimal }> = [];
+  const operating: Array<{ label: string; amount: Decimal; accountId?: string }> = [];
+  const investing: Array<{ label: string; amount: Decimal; accountId?: string }> = [];
+  const financing: Array<{ label: string; amount: Decimal; accountId?: string }> = [];
 
   for (const b of balances) {
     if (isCash(b) || b.type === 'income' || b.type === 'expense' || b.movement.isZero()) continue;
     if (b.type === 'asset') {
       const effect = b.movement.times(-1); // asset up = cash used
       if (b.subtype === 'fixed_asset') {
-        investing.push({ label: b.name, amount: effect });
+        investing.push({ label: b.name, amount: effect, accountId: b.id });
       } else if (b.subtype === 'accumulated_depreciation') {
-        operating.push({ label: `Depreciation (${b.name})`, amount: effect });
+        operating.push({ label: `Depreciation (${b.name})`, amount: effect, accountId: b.id });
       } else {
-        operating.push({ label: `Change in ${b.name}`, amount: effect });
+        operating.push({ label: `Change in ${b.name}`, amount: effect, accountId: b.id });
       }
     } else if (b.type === 'liability') {
       // movement is debit-positive; a liability increase is negative movement → cash source
       const eff = b.movement.times(-1);
-      if (b.subtype === 'long_term_liability') financing.push({ label: b.name, amount: eff });
-      else operating.push({ label: `Change in ${b.name}`, amount: eff });
+      if (b.subtype === 'long_term_liability') financing.push({ label: b.name, amount: eff, accountId: b.id });
+      else operating.push({ label: `Change in ${b.name}`, amount: eff, accountId: b.id });
     } else if (b.type === 'equity') {
-      financing.push({ label: b.name, amount: b.movement.times(-1) });
+      financing.push({ label: b.name, amount: b.movement.times(-1), accountId: b.id });
     }
   }
 
@@ -213,8 +213,8 @@ export async function cashFlow(db: Knex, companyId: string, opts: { from: string
   const financingTotal = sum(financing);
   const netChange = operatingTotal.plus(investingTotal).plus(financingTotal);
 
-  const fmtRows = (rows: Array<{ label: string; amount: Decimal }>) =>
-    rows.map((r) => ({ label: r.label, amount: money(r.amount) }));
+  const fmtRows = (rows: Array<{ label: string; amount: Decimal; accountId?: string }>) =>
+    rows.map((r) => ({ label: r.label, amount: money(r.amount), accountId: r.accountId ?? null }));
 
   return {
     title: 'Cash Flow Statement (Indirect)',
@@ -375,9 +375,10 @@ export async function taxSummary(db: Knex, companyId: string, opts: { from: stri
           this.select('purchase_account_id').from('tax_codes').where('company_id', companyId).whereNotNull('purchase_account_id');
         });
     })
-    .groupBy('tc.code', 'tc.name', 'tc.rate', 'tc.report_category', 'a.type')
+    .groupBy('tc.code', 'tc.name', 'tc.rate', 'tc.report_category', 'a.type', 'a.id')
     .select(
       'tc.code', 'tc.name', 'tc.rate', 'tc.report_category', 'a.type as account_type',
+      'a.id as account_id',
       db.raw('sum(jl.base_credit) - sum(jl.base_debit) as net_credit'),
     );
 
@@ -401,6 +402,7 @@ export async function taxSummary(db: Knex, companyId: string, opts: { from: stri
       name: r.name,
       rate: d(r.rate).toFixed(2),
       category: r.report_category,
+      accountId: r.account_id,
       amount: money(netCredit.abs()),
       direction: netCredit.gte(0) ? 'payable' : 'receivable',
     };
@@ -455,7 +457,7 @@ export async function customerStatement(
     })
     .where({ 'je.company_id': companyId, 'je.status': 'posted', 'jl.contact_id': customerId })
     .orderBy([{ column: 'je.txn_date' }, { column: 'je.entry_no' }])
-    .select('je.txn_date', 'je.source_type', 'je.memo', 'jl.description', 'jl.base_debit', 'jl.base_credit');
+    .select('je.id as entry_id', 'je.txn_date', 'je.source_type', 'je.memo', 'jl.description', 'jl.base_debit', 'jl.base_credit');
 
   let opening = d(0);
   const rows: any[] = [];
@@ -470,6 +472,7 @@ export async function customerStatement(
     running = (rows.length ? running : opening).plus(delta);
     rows.push({
       date: l.txn_date,
+      entryId: l.entry_id,
       type: l.source_type,
       description: l.description ?? l.memo,
       charges: d(l.base_debit).isZero() ? '' : money(l.base_debit),

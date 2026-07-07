@@ -21,6 +21,9 @@ export function createApp() {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRouter);
+  // SSE endpoint authenticates via query token (EventSource cannot set headers);
+  // mounted before any bearer-guarded /api/companies matcher so it wins.
+  app.use('/api/companies/:companyId/events', eventsRouter);
   app.use('/api/companies', requireAuth, companiesRouter);
 
   const scoped = express.Router({ mergeParams: true });
@@ -36,8 +39,6 @@ export function createApp() {
   scoped.use('/reports', reportsRouter);
   scoped.use('/search', searchRouter);
   app.use('/api/companies/:companyId', requireAuth, companyContext, scoped);
-  // SSE endpoint authenticates via query token (EventSource cannot set headers)
-  app.use('/api/companies/:companyId/events', eventsRouter);
 
   // Error handler: ApiError → its status; Postgres RAISE/constraint → 400.
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

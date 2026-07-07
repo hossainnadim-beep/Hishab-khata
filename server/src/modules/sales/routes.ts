@@ -199,7 +199,7 @@ salesRouter.get('/invoices/:id', async (req: AuthedRequest, res, next) => {
     const allocations = await db('payment_allocations as pa')
       .join('payments as p', 'p.id', 'pa.payment_id')
       .where({ 'pa.doc_type': 'invoice', 'pa.doc_id': invoice.id, 'p.status': 'active' })
-      .select('pa.amount', 'p.doc_no', 'p.payment_date', 'p.id as payment_id');
+      .select('pa.amount', 'p.doc_no', 'p.payment_date', 'p.id as payment_id', 'p.journal_entry_id');
     const credits = await db('credit_note_applications as ca')
       .join('credit_notes as cn', 'cn.id', 'ca.credit_note_id')
       .where('ca.invoice_id', invoice.id)

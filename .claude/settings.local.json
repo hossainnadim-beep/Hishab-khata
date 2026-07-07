@@ -32,7 +32,10 @@
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select count\\(*\\) from users where email='demo@khatabooks.app'; select count\\(*\\) from companies; select name from companies\")",
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select c.name, coalesce\\(sum\\(jl.base_debit\\)-sum\\(jl.base_credit\\),0\\) from companies c left join journal_entries je on je.company_id=c.id and je.status='posted' left join journal_lines jl on jl.entry_id=je.id group by c.name\")",
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql -d khata_dev -tAc \"select c.name, coalesce\\(sum\\(jl.base_debit\\)-sum\\(jl.base_credit\\),0\\) from companies c join accounts a on a.company_id=c.id left join journal_lines jl on jl.account_id=a.id left join journal_entries je on je.id=jl.entry_id and je.status='posted' group by c.name; select count\\(*\\) from journal_entries je join companies c on c.id=je.company_id where c.name in \\('Co1','Co2'\\)\")",
-      "Bash(git commit -q -m 'Notes: tenant-isolation lesson from adversarial audit *)"
+      "Bash(git commit -q -m 'Notes: tenant-isolation lesson from adversarial audit *)",
+      "Bash(cd \"/Users/imteaj/Documents/Claude QBO Clone/web\" && npx tsc --noEmit 2>&1 | head -20; echo \"tsc exit: $?\" && cd ../server && npx vitest run 2>&1 | grep -E \"Test Files|Tests \")",
+      "Bash(TOKEN=$\\(curl -s -X POST localhost:4000/api/auth/login -H 'content-type: application/json' -d '{\"email\":\"demo@khatabooks.app\",\"password\":\"demo1234\"}' | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>console.log\\(JSON.parse\\(d\\).token\\)\\)\"\\) && CO=$\\(curl -s localhost:4000/api/auth/me -H \"authorization: Bearer $TOKEN\" | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>console.log\\(JSON.parse\\(d\\).companies[0].id\\)\\)\"\\) && curl -s -N --max-time 3 \"localhost:4000/api/companies/$CO/events?token=$TOKEN\" -D - | head -20; tail -5 /tmp/khata-server.log)",
+      "Bash(awk '{print $2, $9}')"
     ]
   }
 }

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { api } from './api';
+import { api, onDataChange } from './api';
 
-/** Fetch-on-mount hook with manual reload. */
+/**
+ * Fetch-on-mount hook with manual reload. Also subscribes to the data-change
+ * bus: after any posting (this tab or another session via SSE) the view
+ * refetches silently — reports reflect new data with no manual refresh.
+ */
 export function useFetch<T = any>(path: string | null, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -14,21 +18,53 @@ export function useFetch<T = any>(path: string | null, deps: unknown[] = []) {
     setData(null);
     setLoading(true);
   }
-  const reload = useCallback(() => {
-    if (!path) return;
-    setLoading(true);
-    api
-      .get(path)
-      .then((d) => {
-        setData(d);
-        setError(null);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [path]);
+  const fetchData = useCallback(
+    (silent: boolean) => {
+      if (!path) return;
+      if (!silent) setLoading(true);
+      api
+        .get(path)
+        .then((d) => {
+          setData(d);
+          setError(null);
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setLoading(false));
+    },
+    [path],
+  );
+  const reload = useCallback(() => fetchData(false), [fetchData]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(reload, [path, ...deps]);
+  useEffect(() => fetchData(false), [path, ...deps]);
+  useEffect(() => onDataChange(() => fetchData(true)), [fetchData]);
   return { data, error, loading, reload };
+}
+
+/** Loading skeleton block(s). */
+export function Skeleton({ rows = 4, height = 16 }: { rows?: number; height?: number }) {
+  return (
+    <div className="skeleton-group" aria-busy="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="skeleton" style={{ height, width: `${100 - (i % 3) * 12}%` }} />
+      ))}
+    </div>
+  );
+}
+
+export function EmptyState({
+  message,
+  action,
+}: {
+  message: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="empty-state">
+      <div className="empty-art">◎</div>
+      <p>{message}</p>
+      {action}
+    </div>
+  );
 }
 
 export function ErrorMsg({ error }: { error: string | null }) {
@@ -50,7 +86,7 @@ export function Badge({ status }: { status: string }) {
 }
 
 export function Spinner() {
-  return <p className="muted">Loading…</p>;
+  return <Skeleton rows={4} />;
 }
 
 /** Async submit button that surfaces API errors to the parent. */

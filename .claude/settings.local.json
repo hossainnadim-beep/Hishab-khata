@@ -38,7 +38,10 @@
       "Bash(awk '{print $2, $9}')",
       "Bash(curl -s -X POST localhost:4000/api/auth/login -H 'content-type: application/json' -d '{\"email\":\"demo@khatabooks.app\",\"password\":\"demo1234\"}')",
       "Bash(python3 -m json.tool)",
-      "Bash(git commit -q -m 'Docs: phase 2 README, OpenAPI \\(IFRS, drill-down, SSE, search, audit\\), notes *)"
+      "Bash(git commit -q -m 'Docs: phase 2 README, OpenAPI \\(IFRS, drill-down, SSE, search, audit\\), notes *)",
+      "Bash(python3)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{JSON.parse\\(d\\).forEach\\(a=>console.log\\(' ',a.action,'by',a.user_name\\)\\)}\\)\")",
+      "Bash(git commit -q -m 'Populate immutable audit trail in seed; add route-level audit tests *)"
     ]
   }
 }

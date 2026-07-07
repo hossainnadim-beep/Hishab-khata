@@ -338,7 +338,46 @@ await db.transaction(async (trx) => {
   await importStatement(trx, { companyId: c, accountId: A['1010'], format: 'csv', content: csv, filename: 'citybank-june.csv', userId: owner.id });
   await autoMatch(trx, c, A['1010'], owner.id);
 
-  console.log(`Seeded company ${company.name} (${c})`);
+  // ---- Synthesize the immutable audit trail for the seeded documents ----
+  // Live create/post/pay flows write audit rows in the route layer; the seed
+  // uses the service layer directly, so we record the equivalent history here
+  // (created → posted/approved → paid/reimbursed) with realistic timestamps.
+  const auditRows: any[] = [];
+  const add = (date: string, action: string, entityType: string, entityId: string, details: any) =>
+    auditRows.push({
+      company_id: c, user_id: owner.id, action, entity_type: entityType,
+      entity_id: entityId, details: JSON.stringify(details),
+      created_at: new Date(`${date}T09:00:00Z`),
+    });
+
+  for (const inv of await trx('invoices').where({ company_id: c })) {
+    add(inv.issue_date, 'invoice.created', 'invoice', inv.id, { docNo: inv.doc_no, total: inv.total });
+    if (inv.status !== 'draft') add(inv.issue_date, 'invoice.posted', 'invoice', inv.id, { docNo: inv.doc_no, journalEntryId: inv.journal_entry_id });
+    if (inv.status === 'voided') add(inv.issue_date, 'invoice.voided', 'invoice', inv.id, { docNo: inv.doc_no });
+  }
+  for (const bill of await trx('bills').where({ company_id: c })) {
+    add(bill.issue_date, 'bill.created', 'bill', bill.id, { docNo: bill.doc_no, total: bill.total });
+    if (bill.status !== 'draft') add(bill.issue_date, 'bill.posted', 'bill', bill.id, { docNo: bill.doc_no, journalEntryId: bill.journal_entry_id });
+  }
+  for (const cn of await trx('credit_notes').where({ company_id: c })) {
+    add(cn.issue_date, 'credit_note.created', 'credit_note', cn.id, { docNo: cn.doc_no, total: cn.total });
+    if (cn.status !== 'draft') add(cn.issue_date, 'credit_note.posted', 'credit_note', cn.id, { docNo: cn.doc_no });
+  }
+  for (const q of await trx('quotes').where({ company_id: c })) {
+    add(q.issue_date, 'quote.created', 'quote', q.id, { docNo: q.doc_no, total: q.total });
+  }
+  for (const p of await trx('payments').where({ company_id: c })) {
+    add(p.payment_date, p.kind === 'receive' ? 'payment.received' : 'payment.paid', 'payment', p.id, { docNo: p.doc_no, amount: p.amount });
+  }
+  for (const claim of await trx('expense_claims').where({ company_id: c })) {
+    add(claim.claim_date, 'expense_claim.created', 'expense_claim', claim.id, { docNo: claim.doc_no, total: claim.total });
+    if (['approved', 'reimbursed'].includes(claim.status)) add(claim.claim_date, 'expense_claim.approved', 'expense_claim', claim.id, { docNo: claim.doc_no });
+    if (claim.status === 'reimbursed') add(claim.claim_date, 'expense_claim.reimbursed', 'expense_claim', claim.id, { docNo: claim.doc_no });
+  }
+  add(new Date().toISOString().slice(0, 10), 'company.created', 'company', c, { name: company.name });
+  await trx('audit_log').insert(auditRows);
+
+  console.log(`Seeded company ${company.name} (${c}) with ${auditRows.length} audit records`);
 });
 
 console.log('Done. Login: demo@khatabooks.app / demo1234');

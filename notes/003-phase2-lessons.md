@@ -29,3 +29,11 @@ One-line: derive every statement from one balance aggregation, and mount SSE bef
   nav at 768px+, rail collapse (localStorage) on desktop.
 - **Audit before/after**: capture the row BEFORE calling the update service,
   then store {before, after} in the audit details jsonb — the UI diffs them.
+- **Seed must write the audit trail too.** Audit rows are written in the ROUTE
+  layer (audit() after each service call); the seed calls services directly, so
+  seeded documents had an empty /activity until we synthesized created/posted/
+  paid audit rows at the end of the seed. Caught by fresh-context verification,
+  not by the suite — so also added audit.api.test.ts (supertest through the real
+  routes) asserting create+post populate audit and edits store before/after.
+  Lesson: when a subagent verifies "feature X works", check it against the
+  DEMO data path, not just the code path; seed and routes can diverge.

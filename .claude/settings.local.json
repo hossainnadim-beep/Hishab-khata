@@ -41,7 +41,9 @@
       "Bash(git commit -q -m 'Docs: phase 2 README, OpenAPI \\(IFRS, drill-down, SSE, search, audit\\), notes *)",
       "Bash(python3)",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{JSON.parse\\(d\\).forEach\\(a=>console.log\\(' ',a.action,'by',a.user_name\\)\\)}\\)\")",
-      "Bash(git commit -q -m 'Populate immutable audit trail in seed; add route-level audit tests *)"
+      "Bash(git commit -q -m 'Populate immutable audit trail in seed; add route-level audit tests *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('cash-flow reconciles:',r.reconciles,'| closingCash:',r.closingCash,'| operating rows have accountId:',r.operating.adjustments.every\\(x=>'accountId' in x\\)\\)}\\)\")",
+      "Bash(git commit -q -m 'notes: seed-must-write-audit-trail lesson from phase-2 verification *)"
     ]
   }
 }

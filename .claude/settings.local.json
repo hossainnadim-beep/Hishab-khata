@@ -50,7 +50,9 @@
       "Bash(curl -s localhost:4000/api/health)",
       "Bash(node collect-demo-data.mjs)",
       "Bash(node -e \"const d=require\\('./demo-data.json'\\); console.log\\('kpis:',JSON.stringify\\(d.kpis\\)\\); console.log\\('invoices:',d.invoices.length,'| tb rows:',d.tb.rows.length,'| accountTxns:',Object.keys\\(d.accountTxns\\).length,'| journalEntries:',Object.keys\\(d.journalEntries\\).length\\); console.log\\('size KB:',Math.round\\(require\\('fs'\\).statSync\\('demo-data.json'\\).size/1024\\)\\)\")",
-      "Bash(pkill -f \"http.server 8788\")"
+      "Bash(pkill -f \"http.server 8788\")",
+      "Bash(gh auth *)",
+      "Bash(gh --version)"
     ]
   }
 }
